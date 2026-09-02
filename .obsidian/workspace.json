@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Tutorials/Git + GitHub Tutorials.md",
+                "file": "Planning/Planning.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Git + GitHub Tutorials"
+              "title": "Planning"
             }
           }
         ]
@@ -99,7 +99,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Tutorials/Git + GitHub Tutorials.md",
+                "file": "Planning/Planning.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +118,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Tutorials/Git + GitHub Tutorials.md",
+                "file": "Planning/Planning.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -161,7 +161,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Tutorials/Git + GitHub Tutorials.md",
+                "file": "Planning/Planning.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -190,10 +190,13 @@
   },
   "active": "218848a23abb2143",
   "lastOpenFiles": [
+    "Analysis/Analysis.md",
+    "Planning/Planning.md",
+    "Analysis/Untitled.md",
+    "Tutorials/Git + GitHub Tutorials.md",
     "Analysis",
     "Planning",
     "Untitled.md",
-    "Tutorials/Git + GitHub Tutorials.md",
     "Hello World.md",
     "Tutorials"
   ]
