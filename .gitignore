@@ -36,6 +36,5 @@ dist-ssr/
 # Accidental npm run at the vault root (no package.json here)
 /package-lock.json
 
-# Leftover first Vite scaffold (JavaScript). The app to version is react-app/react-app/
-/react-app/*
-!/react-app/react-app/
+# Nested duplicate from an earlier Vite scaffold
+/react-app/react-app/

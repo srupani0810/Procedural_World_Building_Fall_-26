@@ -94,7 +94,7 @@ UI (layout, controls, type, color)
 ## Interaction and states
 
 - **Affordance:** a cue that something can be used a certain way (a track looks slidable; a row looks clickable).
-- **Signifier:** the visible hint of that affordance (a chevron, a raised button, an orange fill).
+- **Signifier:** the visible hint of that affordance (a chevron, a raised button, a red fill).
 - **Feedback:** the UI’s reply to an action (value updates, mesh rebuilds, button depresses). No feedback feels broken.
 - **State:** how a control looks in a situation. Common states:
 
@@ -131,7 +131,7 @@ UI (layout, controls, type, color)
 - **Tracking / letter-spacing:** space between letters. Small caps labels often use extra tracking.
 - **Leading / line-height:** space between lines.
 - **Color palette:** the set of colors you actually use. A tight palette looks intentional.
-- **Accent / highlight:** the one loud color for live, selected, or editing (in this project, orange).
+- **Accent / highlight:** the one loud color for live, selected, or editing (in this project, red).
 - **Contrast:** difference between foreground and background. Low contrast is hard to read.
 - **Saturation:** how vivid a color is. Desaturated UI keeps the 3D view in charge.
 - **Opacity:** how see-through a layer is. Heavy transparency (glass, blur) fights dense studio UIs.

@@ -22,7 +22,7 @@ References to steal from, not copy: TouchDesigner’s operator viewer + paramete
 
 ## Color
 
-**One highlight.** Everything else is near-neutral charcoal. No second accent (no blue, purple, or green).
+**One highlight.** Chrome stays near-neutral charcoal. The UI accent is red. Heightmaps may use a blue→red data ramp (low to high); that colormap is not a second chrome accent.
 
 | Token | Hex | Use |
 |---|---|---|
@@ -33,14 +33,14 @@ References to steal from, not copy: TouchDesigner’s operator viewer + paramete
 | `--text` | `#C4C4C4` | Labels, titles |
 | `--text-dim` | `#7A7A7A` | Secondary labels, units, hints |
 | `--text-mute` | `#525252` | Disabled, placeholders |
-| `--highlight` | `#FF7A00` | **The only chroma:** slider fill, focus, active, numeric emphasis |
-| `--highlight-dim` | `#FF7A0040` | Hover wash, selected row, thin glow (optional, keep faint) |
+| `--highlight` | `#FF1A1A` | **Chrome chroma:** slider fill, focus, active, numeric emphasis |
+| `--highlight-dim` | `#FF1A1A40` | Hover wash, selected row, thin glow (optional, keep faint) |
 
 Viewport mesh may use a **desaturated** version of the highlight or a neutral gray-blue metal. Do not introduce a second UI color to “match” the blob.
 
 Hover: lighten `--text` toward `#E8E8E8`, or put `--highlight` on the control only.
 
-Disabled: `--text-mute`, track stays `--inset`, no orange fill.
+Disabled: `--text-mute`, track stays `--inset`, no red fill.
 
 ---
 
@@ -151,7 +151,7 @@ SIZE                         1.00
   --text: #c4c4c4;
   --text-dim: #7a7a7a;
   --text-mute: #525252;
-  --highlight: #ff7a00;
+  --highlight: #ff1a1a;
 
   --font: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   --fs-micro: 9px;
@@ -178,13 +178,13 @@ Load IBM Plex Mono (400) from a font source or self-host. Do not mix in a second
 
 ## Current app vs this spec
 
-The overlay and viewport should already follow this document: IBM Plex Mono, `--void` canvas, opaque square pane, `#FF7A00` sliders, 9–12px type. If a UI change drifts (blue accents, radius, blur, large titles), run the checklist below.
+The overlay and viewport should already follow this document: IBM Plex Mono, `--void` canvas, opaque square pane, `#FF1A1A` sliders, 9–12px type. Heightmaps use a blue→red ramp (low→high). If a UI change drifts (orange accents, radius, blur, large titles), run the checklist below.
 
 ---
 
 ## Checklist before shipping a UI change
 
-- [ ] No color besides neutrals + `#FF7A00`
+- [ ] Chrome chroma is neutrals + `#FF1A1A` (heightmaps may use blue→red)
 - [ ] Overlay type ≤ 12px
 - [ ] Monospace only
 - [ ] Pane is opaque, square, 1px ruled

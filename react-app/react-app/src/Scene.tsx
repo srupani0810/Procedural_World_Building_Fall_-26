@@ -1,54 +1,57 @@
 import { OrbitControls } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { useEffect, useMemo } from 'react'
-import { IcosahedronGeometry, Vector3 } from 'three'
-import type { BlobParams } from './blobParams.ts'
+import { useLayoutEffect, useRef } from 'react'
+import { Color, Object3D } from 'three'
+import type { InstancedMesh } from 'three'
 
-function Blob({ params }: { params: BlobParams }) {
-  const geometry = useMemo(() => {
-    const geo = new IcosahedronGeometry(1, 6)
-    const pos = geo.attributes.position
-    const vertex = new Vector3()
-    const { blobiness, frequency } = params
+const RESOLUTION = 8
+const COUNT = RESOLUTION * RESOLUTION * RESOLUTION
 
-    for (let i = 0; i < pos.count; i++) {
-      vertex.fromBufferAttribute(pos, i)
-      const bulge =
-        blobiness *
-          Math.sin(vertex.x * frequency) *
-          Math.cos(vertex.y * frequency * 0.87) *
-          Math.sin(vertex.z * frequency * 1.1) +
-        blobiness * 0.55 * Math.sin(vertex.x * frequency * 2.3 + vertex.y * frequency * 1.32)
-      vertex.normalize().multiplyScalar(1 + bulge)
-      pos.setXYZ(i, vertex.x, vertex.y, vertex.z)
+function PixelCube() {
+  const meshRef = useRef<InstancedMesh>(null)
+
+  useLayoutEffect(() => {
+    const mesh = meshRef.current
+    if (!mesh) return
+
+    const dummy = new Object3D()
+    const color = new Color()
+    const cell = 1 / RESOLUTION
+    const offset = (RESOLUTION - 1) / 2
+    let index = 0
+
+    for (let x = 0; x < RESOLUTION; x++) {
+      for (let y = 0; y < RESOLUTION; y++) {
+        for (let z = 0; z < RESOLUTION; z++) {
+          dummy.position.set((x - offset) * cell, (y - offset) * cell, (z - offset) * cell)
+          dummy.updateMatrix()
+          mesh.setMatrixAt(index, dummy.matrix)
+
+          const shade = 0.52 + ((x + y + z) % 3) * 0.1
+          color.setRGB(shade * 0.55, shade * 0.53, shade * 0.5)
+          mesh.setColorAt(index, color)
+          index += 1
+        }
+      }
     }
 
-    geo.computeVertexNormals()
-    return geo
-  }, [params.blobiness, params.frequency])
-
-  useEffect(() => {
-    return () => {
-      geometry.dispose()
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true
     }
-  }, [geometry])
+  }, [])
+
+  const voxel = 1 / RESOLUTION - 1 / RESOLUTION / 12
 
   return (
-    <mesh
-      geometry={geometry}
-      scale={params.size}
-      rotation={[0, (params.rotation * Math.PI) / 180, 0]}
-    >
-      <meshStandardMaterial
-        color="#8a8680"
-        metalness={params.metalness}
-        roughness={params.roughness}
-      />
-    </mesh>
+    <instancedMesh ref={meshRef} args={[undefined, undefined, COUNT]}>
+      <boxGeometry args={[voxel, voxel, voxel]} />
+      <meshStandardMaterial roughness={0.9} metalness={0} />
+    </instancedMesh>
   )
 }
 
-export default function Scene({ params }: { params: BlobParams }) {
+export default function Scene() {
   return (
     <Canvas
       className="scene-canvas"
@@ -57,10 +60,10 @@ export default function Scene({ params }: { params: BlobParams }) {
       gl={{ antialias: true }}
     >
       <color attach="background" args={['#0a0a0a']} />
-      <ambientLight intensity={0.45} />
+      <ambientLight intensity={0.5} />
       <directionalLight position={[4, 6, 3]} intensity={1.35} />
-      <directionalLight position={[-3, -1, -2]} intensity={0.25} />
-      <Blob params={params} />
+      <directionalLight position={[-3, -1, -2]} intensity={0.22} />
+      <PixelCube />
       <OrbitControls
         makeDefault
         enableDamping
