@@ -1,15 +1,18 @@
+import type { RefObject } from 'react'
 import { NOISE_OPTIONS, getNoiseOption } from './terrainParams.ts'
 import type { NoiseId, TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import type { ErosionParams } from './erosion.ts'
 import HeightMapView from './HeightMapView.tsx'
 import NoiseMap from './NoiseMap.tsx'
 import { Slider } from './Slider.tsx'
-import type { RefObject } from 'react'
+import { VOXEL_RENDER_OPTIONS, defaultVoxelParams } from './voxelParams.ts'
+import type { VoxelParams, VoxelRenderMode } from './voxelParams.ts'
 
 type AppChromeProps = {
   mode: ViewMode
   twoDTab: TwoDTab
   params: TerrainParams
+  voxelParams: VoxelParams
   erosion: ErosionParams
   running: boolean
   mapRef: RefObject<Float32Array | null>
@@ -18,6 +21,7 @@ type AppChromeProps = {
   onMode: (mode: ViewMode) => void
   onTwoDTab: (tab: TwoDTab) => void
   onChange: (patch: Partial<TerrainParams>) => void
+  onVoxelChange: (patch: Partial<VoxelParams>) => void
   onErosion: (patch: Partial<ErosionParams>) => void
   onStart: () => void
   onStop: () => void
@@ -28,6 +32,7 @@ export default function AppChrome({
   mode,
   twoDTab,
   params,
+  voxelParams,
   erosion,
   running,
   mapRef,
@@ -36,6 +41,7 @@ export default function AppChrome({
   onMode,
   onTwoDTab,
   onChange,
+  onVoxelChange,
   onErosion,
   onStart,
   onStop,
@@ -44,6 +50,9 @@ export default function AppChrome({
   const option = getNoiseOption(params.noiseId)
   const extra = params.extras[params.noiseId]
   const showSim = mode === '2d' && twoDTab === 'sim'
+  const showVoxels = mode === 'voxels'
+  const renderLabel =
+    VOXEL_RENDER_OPTIONS.find((item) => item.id === voxelParams.renderMode)?.label ?? '—'
 
   return (
     <div className="chrome">
@@ -54,10 +63,10 @@ export default function AppChrome({
 
       <aside className="chrome-panel" aria-label="Parameters">
         <div className="chrome-panel-header">
-          <h2>Terrain</h2>
+          <h2>{showVoxels ? 'Voxels' : 'Terrain'}</h2>
         </div>
 
-        <div className="chrome-modes" role="tablist" aria-label="View">
+        <div className="chrome-modes chrome-modes-3" role="tablist" aria-label="View">
           <button
             type="button"
             role="tab"
@@ -75,6 +84,15 @@ export default function AppChrome({
             onClick={() => onMode('2d')}
           >
             2D
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'voxels'}
+            className={mode === 'voxels' ? 'is-active' : undefined}
+            onClick={() => onMode('voxels')}
+          >
+            Voxels
           </button>
         </div>
 
@@ -99,6 +117,69 @@ export default function AppChrome({
               Sim
             </button>
           </div>
+        ) : null}
+
+        {showVoxels ? (
+          <>
+            <section className="chrome-group">
+              <h3>Voxelize</h3>
+              <p className="chrome-hint">
+                Builds Minecraft-style columns from the same noise field as 3D / 2D.
+              </p>
+              <label className="chrome-field">
+                <span className="chrome-slider-row">
+                  <span>Mode</span>
+                  <span className="chrome-slider-value">{renderLabel}</span>
+                </span>
+                <select
+                  value={voxelParams.renderMode}
+                  onChange={(event) =>
+                    onVoxelChange({ renderMode: event.target.value as VoxelRenderMode })
+                  }
+                >
+                  {VOXEL_RENDER_OPTIONS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Slider
+                label="Resolution"
+                value={voxelParams.resolution}
+                min={8}
+                max={48}
+                step={1}
+                display={String(Math.round(voxelParams.resolution))}
+                onChange={(resolution) => onVoxelChange({ resolution })}
+              />
+              <Slider
+                label="Bleed"
+                value={voxelParams.bleed}
+                min={0}
+                max={1}
+                step={0.01}
+                display={voxelParams.bleed.toFixed(2)}
+                onChange={(bleed) => onVoxelChange({ bleed })}
+              />
+              <Slider
+                label="Overlap"
+                value={voxelParams.overlap}
+                min={0.7}
+                max={1.2}
+                step={0.01}
+                display={voxelParams.overlap.toFixed(2)}
+                onChange={(overlap) => onVoxelChange({ overlap })}
+              />
+              <button
+                type="button"
+                className="chrome-reset chrome-reset-full"
+                onClick={() => onVoxelChange(defaultVoxelParams)}
+              >
+                Reset voxels
+              </button>
+            </section>
+          </>
         ) : null}
 
         {showSim ? (

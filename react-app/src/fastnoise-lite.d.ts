@@ -24,6 +24,6 @@ declare module 'fastnoise-lite' {
     SetFractalGain(gain: number): void
     SetFractalPingPongStrength(strength: number): void
     SetCellularJitter(jitter: number): void
-    GetNoise(x: number, y: number): number
+    GetNoise(x: number, y: number, z?: number): number
   }
 }

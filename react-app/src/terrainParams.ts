@@ -1,6 +1,6 @@
 import FastNoiseLite from 'fastnoise-lite'
 
-export type ViewMode = '3d' | '2d'
+export type ViewMode = '3d' | '2d' | 'voxels'
 export type TwoDTab = 'field' | 'sim'
 
 export type NoiseId =

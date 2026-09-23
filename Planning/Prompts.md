@@ -51,6 +51,13 @@ want the heightmap to be grayscale again but make the 3d mesh not wireframe so t
 
 ---
 
+## 2026-09-23
+
+### Voxels terrain tab
+lets create a new tab named voxels terrain that implements the different density shapes (marching cubes, ray marching, point, etc.)
+
+---
+
 ## How to keep this going
 
 After a prompt that changes the Three.js app, paste it here:

@@ -3,16 +3,20 @@ import AppChrome from './AppChrome.tsx'
 import HeightMapView from './HeightMapView.tsx'
 import NoiseMap from './NoiseMap.tsx'
 import Scene from './Scene.tsx'
+import VoxelScene from './VoxelScene.tsx'
 import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion.ts'
 import type { ErosionParams } from './erosion.ts'
 import { defaultTerrainParams } from './terrainParams.ts'
 import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
+import { defaultVoxelParams } from './voxelParams.ts'
+import type { VoxelParams } from './voxelParams.ts'
 import './App.css'
 
 function App() {
   const [mode, setMode] = useState<ViewMode>('3d')
   const [twoDTab, setTwoDTab] = useState<TwoDTab>('field')
   const [params, setParams] = useState<TerrainParams>(defaultTerrainParams)
+  const [voxelParams, setVoxelParams] = useState<VoxelParams>(defaultVoxelParams)
   const [erosion, setErosion] = useState<ErosionParams>(defaultErosionParams)
   const [running, setRunning] = useState(false)
   const [mapRevision, setMapRevision] = useState(0)
@@ -55,6 +59,8 @@ function App() {
       <div className="viewport">
         {mode === '3d' ? (
           <Scene params={params} />
+        ) : mode === 'voxels' ? (
+          <VoxelScene terrain={params} voxel={voxelParams} />
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -73,6 +79,7 @@ function App() {
         mode={mode}
         twoDTab={twoDTab}
         params={params}
+        voxelParams={voxelParams}
         erosion={erosion}
         running={running}
         mapRef={mapRef}
@@ -81,6 +88,7 @@ function App() {
         onMode={handleMode}
         onTwoDTab={handleTwoDTab}
         onChange={(patch) => setParams((current) => ({ ...current, ...patch }))}
+        onVoxelChange={(patch) => setVoxelParams((current) => ({ ...current, ...patch }))}
         onErosion={(patch) => setErosion((current) => ({ ...current, ...patch }))}
         onStart={() => {
           ensureMap()

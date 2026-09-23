@@ -95,6 +95,10 @@
   border: var(--rule-w) solid var(--rule);
 }
 
+.chrome-modes-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 .chrome-modes button {
   height: 20px;
   margin: 0;
@@ -116,6 +120,11 @@
 
 .chrome-modes button:hover {
   color: #e8e8e8;
+}
+
+.chrome-modes button.is-active {
+  background: var(--highlight);
+  color: var(--void);
 }
 
 .chrome-modes + .chrome-modes {
