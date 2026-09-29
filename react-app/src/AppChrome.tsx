@@ -2,6 +2,8 @@ import type { RefObject } from 'react'
 import { NOISE_OPTIONS, getNoiseOption } from './terrainParams.ts'
 import type { NoiseId, TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import type { ErosionParams } from './erosion.ts'
+import GradientEditor from './GradientEditor.tsx'
+import type { GradientStop } from './heightGradient.ts'
 import HeightMapView from './HeightMapView.tsx'
 import NoiseMap from './NoiseMap.tsx'
 import { Slider } from './Slider.tsx'
@@ -13,6 +15,7 @@ type AppChromeProps = {
   twoDTab: TwoDTab
   params: TerrainParams
   voxelParams: VoxelParams
+  heightGradient: GradientStop[]
   erosion: ErosionParams
   running: boolean
   mapRef: RefObject<Float32Array | null>
@@ -22,6 +25,7 @@ type AppChromeProps = {
   onTwoDTab: (tab: TwoDTab) => void
   onChange: (patch: Partial<TerrainParams>) => void
   onVoxelChange: (patch: Partial<VoxelParams>) => void
+  onHeightGradientChange: (stops: GradientStop[]) => void
   onErosion: (patch: Partial<ErosionParams>) => void
   onStart: () => void
   onStop: () => void
@@ -33,6 +37,7 @@ export default function AppChrome({
   twoDTab,
   params,
   voxelParams,
+  heightGradient,
   erosion,
   running,
   mapRef,
@@ -42,6 +47,7 @@ export default function AppChrome({
   onTwoDTab,
   onChange,
   onVoxelChange,
+  onHeightGradientChange,
   onErosion,
   onStart,
   onStop,
@@ -122,10 +128,52 @@ export default function AppChrome({
         {showVoxels ? (
           <>
             <section className="chrome-group">
-              <h3>Voxelize</h3>
+              <h3>Voxel grid</h3>
               <p className="chrome-hint">
-                Builds Minecraft-style columns from the same noise field as 3D / 2D.
+                Step 1 builds an N³ density grid from density(x, y, z). Step 2 meshes that
+                same grid with Marching Cubes or Interactive blocks. In Interactive: click a
+                face to remove a voxel, shift-click to add one beside it.
               </p>
+              <Slider
+                label="Resolution"
+                value={voxelParams.resolution}
+                min={8}
+                max={40}
+                step={1}
+                display={`${Math.round(voxelParams.resolution)}³`}
+                onChange={(resolution) => onVoxelChange({ resolution })}
+              />
+              <Slider
+                label="Isolevel"
+                value={voxelParams.isolevel}
+                min={-1}
+                max={1}
+                step={0.01}
+                display={voxelParams.isolevel.toFixed(2)}
+                onChange={(isolevel) => onVoxelChange({ isolevel })}
+              />
+              <Slider
+                label="Volume"
+                value={voxelParams.volume}
+                min={0}
+                max={1.5}
+                step={0.01}
+                display={voxelParams.volume.toFixed(2)}
+                onChange={(volume) => onVoxelChange({ volume })}
+              />
+              <Slider
+                label="Bleed"
+                value={voxelParams.bleed}
+                min={0}
+                max={1}
+                step={0.01}
+                display={voxelParams.bleed.toFixed(2)}
+                onChange={(bleed) => onVoxelChange({ bleed })}
+              />
+            </section>
+
+            <section className="chrome-group">
+              <h3>Meshing</h3>
               <label className="chrome-field">
                 <span className="chrome-slider-row">
                   <span>Mode</span>
@@ -145,24 +193,6 @@ export default function AppChrome({
                 </select>
               </label>
               <Slider
-                label="Resolution"
-                value={voxelParams.resolution}
-                min={8}
-                max={48}
-                step={1}
-                display={String(Math.round(voxelParams.resolution))}
-                onChange={(resolution) => onVoxelChange({ resolution })}
-              />
-              <Slider
-                label="Bleed"
-                value={voxelParams.bleed}
-                min={0}
-                max={1}
-                step={0.01}
-                display={voxelParams.bleed.toFixed(2)}
-                onChange={(bleed) => onVoxelChange({ bleed })}
-              />
-              <Slider
                 label="Overlap"
                 value={voxelParams.overlap}
                 min={0.7}
@@ -178,6 +208,15 @@ export default function AppChrome({
               >
                 Reset voxels
               </button>
+            </section>
+
+            <section className="chrome-group">
+              <h3>Height gradient</h3>
+              <p className="chrome-hint">
+                Colors Interactive voxel faces by height. Add stops (0 = lowest, 1 = highest);
+                the mesh updates live.
+              </p>
+              <GradientEditor stops={heightGradient} onChange={onHeightGradientChange} />
             </section>
           </>
         ) : null}

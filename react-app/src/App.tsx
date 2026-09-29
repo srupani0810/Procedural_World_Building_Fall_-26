@@ -8,6 +8,8 @@ import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion
 import type { ErosionParams } from './erosion.ts'
 import { defaultTerrainParams } from './terrainParams.ts'
 import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
+import { defaultHeightGradient } from './heightGradient.ts'
+import type { GradientStop } from './heightGradient.ts'
 import { defaultVoxelParams } from './voxelParams.ts'
 import type { VoxelParams } from './voxelParams.ts'
 import './App.css'
@@ -17,6 +19,9 @@ function App() {
   const [twoDTab, setTwoDTab] = useState<TwoDTab>('field')
   const [params, setParams] = useState<TerrainParams>(defaultTerrainParams)
   const [voxelParams, setVoxelParams] = useState<VoxelParams>(defaultVoxelParams)
+  const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
+    defaultHeightGradient.map((stop) => ({ ...stop })),
+  )
   const [erosion, setErosion] = useState<ErosionParams>(defaultErosionParams)
   const [running, setRunning] = useState(false)
   const [mapRevision, setMapRevision] = useState(0)
@@ -60,7 +65,7 @@ function App() {
         {mode === '3d' ? (
           <Scene params={params} />
         ) : mode === 'voxels' ? (
-          <VoxelScene terrain={params} voxel={voxelParams} />
+          <VoxelScene terrain={params} voxel={voxelParams} gradient={heightGradient} />
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -80,6 +85,7 @@ function App() {
         twoDTab={twoDTab}
         params={params}
         voxelParams={voxelParams}
+        heightGradient={heightGradient}
         erosion={erosion}
         running={running}
         mapRef={mapRef}
@@ -89,6 +95,7 @@ function App() {
         onTwoDTab={handleTwoDTab}
         onChange={(patch) => setParams((current) => ({ ...current, ...patch }))}
         onVoxelChange={(patch) => setVoxelParams((current) => ({ ...current, ...patch }))}
+        onHeightGradientChange={setHeightGradient}
         onErosion={(patch) => setErosion((current) => ({ ...current, ...patch }))}
         onStart={() => {
           ensureMap()

@@ -1,32 +1,37 @@
-export type VoxelRenderMode = 'cubes' | 'marching' | 'points' | 'raymarch'
+export type VoxelRenderMode = 'marching' | 'interactive'
 
 export type VoxelParams = {
   renderMode: VoxelRenderMode
-  /** XZ grid resolution (columns). */
+  /** Cells per axis for the N³ density grid. */
   resolution: number
+  /** Solid when density >= isolevel. */
+  isolevel: number
   /**
-   * How much each column height blends with neighbors (0 = hard Minecraft steps,
-   * 1 = strong bleed / soft hills).
+   * 3D blur on the density grid (0 = hard voxels, 1 = soft bleed into neighbors).
    */
   bleed: number
   /**
-   * How much cubes expand into neighbors (0.85 = gaps, 1 = flush, 1.08 = overlap).
+   * How much interactive cubes expand into neighbors (0.85 = gaps, 1 = flush, 1.08 = overlap).
    */
   overlap: number
+  /**
+   * How much 3D noise digs into / bulges the height-based density (caves / overhangs).
+   */
+  volume: number
 }
 
 export const defaultVoxelParams: VoxelParams = {
-  renderMode: 'cubes',
-  resolution: 32,
-  bleed: 0.25,
+  renderMode: 'interactive',
+  resolution: 28,
+  isolevel: 0,
+  bleed: 0.15,
   overlap: 1,
+  volume: 0.35,
 }
 
 export const VOXEL_RENDER_OPTIONS: { id: VoxelRenderMode; label: string }[] = [
-  { id: 'cubes', label: 'Cubes' },
   { id: 'marching', label: 'Marching Cubes' },
-  { id: 'points', label: 'Points' },
-  { id: 'raymarch', label: 'Ray March' },
+  { id: 'interactive', label: 'Interactive' },
 ]
 
 /** Same ground extent as the 3D terrain plane. */

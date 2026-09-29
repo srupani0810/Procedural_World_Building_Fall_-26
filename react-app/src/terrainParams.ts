@@ -107,3 +107,49 @@ export function createNoise(params: TerrainParams) {
 
   return (x: number, y: number) => noise.GetNoise(x, y)
 }
+
+/** Same noise settings as `createNoise`, but samples in 3D (x, y, z). */
+export function createNoise3D(params: TerrainParams) {
+  const noise = new FastNoiseLite(1337)
+  const extra = params.extras[params.noiseId]
+  const octaves = Math.max(1, Math.round(params.layers))
+
+  noise.SetFrequency(params.zoom * 0.12)
+  noise.SetFractalOctaves(octaves)
+  noise.SetFractalType(octaves === 1 ? FastNoiseLite.FractalType.None : FastNoiseLite.FractalType.FBm)
+
+  switch (params.noiseId) {
+    case 'simplex':
+      noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2)
+      noise.SetFractalLacunarity(extra)
+      break
+    case 'simplexS':
+      noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S)
+      noise.SetFractalGain(extra)
+      break
+    case 'perlin':
+      noise.SetNoiseType(FastNoiseLite.NoiseType.Perlin)
+      noise.SetFractalLacunarity(extra)
+      break
+    case 'ridged':
+      noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2)
+      noise.SetFractalType(FastNoiseLite.FractalType.Ridged)
+      noise.SetFractalGain(extra)
+      break
+    case 'cellular':
+      noise.SetNoiseType(FastNoiseLite.NoiseType.Cellular)
+      noise.SetCellularJitter(extra)
+      break
+    case 'value':
+      noise.SetNoiseType(FastNoiseLite.NoiseType.Value)
+      noise.SetFractalGain(extra)
+      break
+    case 'pingpong':
+      noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2)
+      noise.SetFractalType(FastNoiseLite.FractalType.PingPong)
+      noise.SetFractalPingPongStrength(extra)
+      break
+  }
+
+  return (x: number, y: number, z: number) => noise.GetNoise(x, y, z)
+}
