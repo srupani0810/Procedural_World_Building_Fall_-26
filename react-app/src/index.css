@@ -11,9 +11,10 @@
   --highlight-dim: #ff1a1a55;
   --highlight-deep: #b30000;
 
-  --font: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font: 'Martian Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --fs-micro: 9px;
-  --fs-ui: 11px;
+  --fs-ui: 10px;
+  --fs-section: 11px;
   --fs-title: 13px;
   --space: 4px;
   --radius: 2px;

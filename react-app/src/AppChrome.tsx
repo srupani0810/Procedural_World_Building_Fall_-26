@@ -128,7 +128,11 @@ export default function AppChrome({
 
         {showVoxels ? (
           <>
-            <ChromeSection title="Voxel world" defaultOpen>
+            <ChromeSection
+              title="Voxel world"
+              tip="Chunk resolution, load distance, isolevel, volume, and bleed for the infinite voxel field."
+              defaultOpen
+            >
               <p className="chrome-hint">
                 Infinite heightfield (same noise as 3D) streamed as chunks around the camera.
                 Pan / orbit to load new chunks. Interactive: click to remove, shift-click to add.
@@ -180,7 +184,10 @@ export default function AppChrome({
               />
             </ChromeSection>
 
-            <ChromeSection title="Meshing">
+            <ChromeSection
+              title="Meshing"
+              tip="Choose Interactive or Marching Cubes, adjust cube overlap, and reset voxel settings."
+            >
               <label className="chrome-field">
                 <span className="chrome-slider-row">
                   <span>Mode</span>
@@ -217,7 +224,10 @@ export default function AppChrome({
               </button>
             </ChromeSection>
 
-            <ChromeSection title="Height gradient">
+            <ChromeSection
+              title="Height gradient"
+              tip="Edit color stops that paint Interactive voxel faces by height (low → high)."
+            >
               <p className="chrome-hint">
                 Colors Interactive voxel faces by height. Add stops (0 = lowest, 1 = highest);
                 the mesh updates live.
@@ -229,7 +239,11 @@ export default function AppChrome({
 
         {showSim ? (
           <>
-            <ChromeSection title="Hydraulic" defaultOpen>
+            <ChromeSection
+              title="Hydraulic"
+              tip="Start, stop, or reset the 2D hydraulic erosion simulation."
+              defaultOpen
+            >
               <div className="chrome-actions">
                 <button type="button" className="chrome-reset" onClick={onStart} disabled={running}>
                   Start
@@ -244,7 +258,10 @@ export default function AppChrome({
               <p className="chrome-hint">Reset rebuilds the map from the current noise field.</p>
             </ChromeSection>
 
-            <ChromeSection title="Droplet">
+            <ChromeSection
+              title="Droplet"
+              tip="How many water droplets run, and their lifetime, inertia, and gravity."
+            >
               <Slider
                 label="Droplets"
                 value={erosion.droplets}
@@ -283,7 +300,10 @@ export default function AppChrome({
               />
             </ChromeSection>
 
-            <ChromeSection title="Sediment">
+            <ChromeSection
+              title="Sediment"
+              tip="Erosion physics: capacity, erosion/deposition rates, evaporation, slope, and brush radius."
+            >
               <Slider
                 label="Capacity"
                 value={erosion.capacity}
@@ -340,7 +360,7 @@ export default function AppChrome({
               />
             </ChromeSection>
 
-            <ChromeSection title="Map">
+            <ChromeSection title="Map" tip="Live preview of the heightmap the erosion sim is carving.">
               <HeightMapView
                 mapRef={mapRef}
                 size={mapSize}
@@ -353,7 +373,11 @@ export default function AppChrome({
           </>
         ) : (
           <>
-            <ChromeSection title="Noise" defaultOpen>
+            <ChromeSection
+              title="Noise"
+              tip="Pick the noise algorithm and its extra parameter (lacunarity, gain, jitter, etc.)."
+              defaultOpen
+            >
               <label className="chrome-field">
                 <span className="chrome-slider-row">
                   <span>Type</span>
@@ -385,7 +409,10 @@ export default function AppChrome({
               />
             </ChromeSection>
 
-            <ChromeSection title="Field">
+            <ChromeSection
+              title="Field"
+              tip="Shape the shared terrain field: zoom, height, layers, and grid detail."
+            >
               <Slider
                 label="Zoom"
                 value={params.zoom}
@@ -424,7 +451,10 @@ export default function AppChrome({
               />
             </ChromeSection>
 
-            <ChromeSection title="Raw 2D">
+            <ChromeSection
+              title="Raw 2D"
+              tip="Small preview of the raw 2D noise pattern used by the field."
+            >
               <NoiseMap params={params} resolution={96} className="noise-preview" />
             </ChromeSection>
           </>
