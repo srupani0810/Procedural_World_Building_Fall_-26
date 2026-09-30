@@ -4,11 +4,12 @@ Interactive **React + Three.js** terrain playground for Cornell **DESIGN 6197**.
 
 ## Contents
 
-- [Progress by week](#progress-by-week)
-  - [Week 1 — Setup & first Three.js scene](#week-1--setup--first-threejs-scene)
-  - [Week 2 — Noise terrain & erosion](#week-2--noise-terrain--erosion)
-  - [Week 3 — Voxels from the field](#week-3--voxels-from-the-field)
-  - [Week 4 — Density grid, infinite world & UI](#week-4--density-grid-infinite-world--ui)
+- [Progress by class](#progress-by-class)
+  - [Class 01 — Intro, Microscope & Git](#class-01--intro-microscope--git)
+  - [Class 02 — Web tools: React + Three.js](#class-02--web-tools-react--threejs)
+  - [Class 03 — Assignment 1: noise field](#class-03--assignment-1-noise-field)
+  - [Class 04 — Voxels & terraforming](#class-04--voxels--terraforming)
+  - [Class 05 — Assignment 2: shaders](#class-05--assignment-2-shaders)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Getting started](#getting-started)
@@ -17,47 +18,72 @@ Interactive **React + Three.js** terrain playground for Cornell **DESIGN 6197**.
 - [Built with](#built-with)
 - [Author](#author)
 
-## Progress by week
+## Progress by class
 
-Screenshots live under [`docs/progress/`](./docs/progress/). Drop images into each week’s folder (e.g. `screenshot.png`), then uncomment or add the `![…](…)` lines below.
+Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`docs/progress/class-0X/`](./docs/progress/). After you add an image, remove the `<!--` / `-->` around that class’s `![…](…)` line.
 
-### Week 1 — Setup & first Three.js scene
+### Class 01 — Intro, Microscope & Git
 
-**Focus:** Vite + React shell, orbit camera, center object (cube → blob → Halloween ghost), live sliders, style guide UI.
+**Deck:** [PWB — Class 01](https://www.figma.com/deck/POK6565upmCTz79sU6Q2ns/PWB---Class-01)
 
-<!-- After adding docs/progress/week-01/screenshot.png, remove the comment markers on the next line: -->
-<!-- ![Week 1](docs/progress/week-01/screenshot.png) -->
+**Class topics:** Course intro & PCG framing; Microscope-style worldbuilding; tools / version control (**Git + GitHub**).
 
-### Week 2 — Noise terrain & erosion
+**App progress:** Repo setup, `.gitignore`, first commits; planning / prompt log started.
 
-**Focus:** Pixel cube pass; **3D / 2D** tabs; FastNoiseLite heightfield; hydraulic erosion sim; blue→red height coloring on the solid 3D mesh; grayscale 2D heightmap.
+<!-- ![Class 01](docs/progress/class-01/screenshot.png) -->
 
-<!-- ![Week 2](docs/progress/week-02/screenshot.png) -->
+### Class 02 — Web tools: React + Three.js
 
-### Week 3 — Voxels from the field
+**Deck:** [PWB — Class 02](https://www.figma.com/deck/PFjBPB5uuqJIZd3em9Kk7P)
 
-**Focus:** New **Voxels** tab tied to the same 3D field (Minecraft-style blocks, bleed control) instead of a disconnected demo mesh.
+**Class topics:** Traditional web stack (HTML / CSS / JS); tools — **React + Three.js** app shell.
 
-<!-- ![Week 3](docs/progress/week-03/screenshot.png) -->
+**App progress:** Vite + React canvas with orbit camera; center object (cube → blob → Halloween); live sliders; style-guide UI pass.
 
-### Week 4 — Density grid, infinite world & UI
+<!-- ![Class 02](docs/progress/class-02/screenshot.png) -->
 
-**Focus:** Real `density(x,y,z)` grid → meshing; only **Marching Cubes** + **Interactive** (greedy mesh, gradient editor, click edit); heightfield-style terrain; infinite chunk streaming; dark/red accordion panel + tooltips.
+### Class 03 — Assignment 1: noise field
 
-<!-- ![Week 4](docs/progress/week-04/screenshot.png) -->
+**Deck:** [PWB — Class 03](https://www.figma.com/deck/Hc8vcT9xVjjd1p3sT5xKgQ/PWB---Class-03)
+
+**Class topics / Assignment 1:** 3D grid in the viewport; 2D view of a noise equation; apply noise to the 3D grid; slider controls for noise + grid resolution; shaping ops via dropdown (+ own sliders). Extensions: layered noise, noise-type menu, blending.
+
+**App progress:** **3D / 2D** tabs with FastNoiseLite heightfield; hydraulic erosion sim on the 2D map; blue→red height coloring on the solid 3D mesh; grayscale heightmap preview.
+
+<!-- ![Class 03](docs/progress/class-03/screenshot.png) -->
+
+### Class 04 — Voxels & terraforming
+
+**Deck:** [PWB — Class 04](https://www.figma.com/deck/nGInnCOpuzyqmq9z8mFUod/PWB---Class-04)
+
+**Class topics:** Geographic data, **voxels**, and terraforming (incl. Sebastian Lague–style references).
+
+**App progress:** **Voxels** tab from the shared 3D field; real `density(x,y,z)` grid → **Marching Cubes** / **Interactive** (greedy mesh, gradient editor, click edit); infinite chunk streaming; dark/red accordion UI + tooltips.
+
+<!-- ![Class 04](docs/progress/class-04/screenshot.png) -->
+
+### Class 05 — Assignment 2: shaders
+
+**Deck:** [PWB — Class 05](https://www.figma.com/deck/XP1cVSq9wjUzFZuUn0ury1/PWB---Class-05)
+
+**Class topics / Assignment 2:** Shader studies; show what shaders can do for simulations; choose strategies and why; dedicated in-app section to swap shader approaches.
+
+**App progress:** Shader notes in [`Tutorials/Shaders.md`](./Tutorials/Shaders.md); in-app shader swapper still to land — drop study screenshots here as you build them.
+
+<!-- ![Class 05](docs/progress/class-05/screenshot.png) -->
 
 <details>
-<summary>How to add a week’s screenshots</summary>
+<summary>How to add a class’s screenshots</summary>
 
-1. Save a PNG/JPG into the matching folder, e.g. `docs/progress/week-02/erosion.png`.
-2. Under that week in this README, turn on the image line (delete `<!--` and `-->`), or add another:
+1. Save a PNG/JPG into the matching folder, e.g. `docs/progress/class-03/erosion.png`.
+2. Under that class in this README, turn on the image line (delete `<!--` and `-->`), or add another:
 
    ```markdown
-   ![Erosion sim](docs/progress/week-02/erosion.png)
+   ![Erosion sim](docs/progress/class-03/erosion.png)
    ```
 
 3. Commit the image(s) and the README, then push — they appear on the GitHub repo page.
-4. For a new week later: add `docs/progress/week-05/`, a TOC link, and a matching `### Week 5 — …` section.
+4. For the next class deck: add `docs/progress/class-06/`, a TOC link, and a matching `### Class 06 — …` section (with the Figma deck URL).
 
 </details>
 
@@ -117,11 +143,8 @@ npm run preview  # preview the production build
 ├── .gitignore                # Keeps node_modules, dist, .env out of GitHub
 ├── Style Guide.md            # UI / visual direction notes
 ├── docs/
-│   └── progress/             # Weekly screenshots for the README
-│       ├── week-01/
-│       ├── week-02/
-│       ├── week-03/
-│       └── week-04/
+│   └── progress/             # Class screenshots for the README
+│       ├── class-01/         # … class-05 (match PWB decks)
 ├── Analysis/                 # Class analysis notes
 ├── Planning/                 # Planning notes and prompt log
 ├── Tutorials/                # Beginner how-tos (React, Git, Firebase, voxels, …)
