@@ -1,16 +1,18 @@
 # Controls
 
-Reference for every control in the `react-app` panel. Descriptions match the code that reads each value (`AppChrome.tsx`, `terrainParams.ts`, `voxelParams.ts`, `voxelGrid.ts`, `VoxelScene.tsx`, `Scene.tsx`, `heightGradient.ts`, `GradientEditor.tsx`, `NoiseMap.tsx`).
+Reference for every control in the `react-app` panel. Descriptions match the code that reads each value (`AppChrome.tsx`, `terrainParams.ts`, `voxelParams.ts`, `voxelGrid.ts`, `VoxelScene.tsx`, `ShaderScene.tsx`, `ExperientialScene.tsx`, `epParams.ts`, `shaderStudies.ts`, `Scene.tsx`, `heightGradient.ts`, `GradientEditor.tsx`, `NoiseMap.tsx`, `FirstPersonControls.tsx`).
 
 **Where sections appear**
 
 | Section | Visible when |
 |---|---|
-| Noise, Field, Raw 2D | **3D** tab, or **2D → Field** |
-| Voxel World, Meshing, Height Gradient | **Voxels** tab |
-| Hydraulic, Droplet, Sediment, Map | **2D → Sim** (documented at the end) |
+| Noise, Field, Raw 2D | **3D**, **2D → Field**, **Voxels**, or **Shaders** (shared `TerrainParams`; not on EP) |
+| Voxel World, Meshing, Height Gradient | **Voxels** |
+| Shader study, Meshing (shader), Study mesh, Height Gradient | **Shaders** (gradient shared with Voxels) |
+| Atmosphere, Walk | **Experiential Playground \| EP** |
+| Hydraulic, Droplet, Sediment, Map | **2D → Sim** |
 
-Noise / Field also drive the voxel heightfield (same `TerrainParams`).
+Noise params also drive voxel / shader / EP heightfields (same `createNoise` / `createDensityFunction` pipeline).
 
 ---
 
@@ -18,89 +20,46 @@ Noise / Field also drive the voxel heightfield (same `TerrainParams`).
 
 | Control | What it does | Visual effect |
 |---|---|---|
-| **3D / 2D / Voxels** | Sets `ViewMode` in `App.tsx` — which main canvas is mounted. | Switches between the heightfield mesh, the 2D noise/sim view, and the infinite voxel world. |
-| **Field / Sim** (2D only) | Sets `TwoDTab`. | **Field** shows the raw noise map + Noise/Field/Raw 2D panel. **Sim** shows the erosion heightmap + Hydraulic/Droplet/Sediment/Map. |
-
----
-
-## Voxel World
-
-Voxels tab only. Values live on `VoxelParams` and rebuild chunks via `buildVoxelChunk` / `VoxelScene`.
-
-| Control | Range (UI) | What it does | Visual effect |
-|---|---|---|---|
-| **Resolution** | 4–64 (step 1) | Cells per axis of each chunk’s N³ density grid (`Math.round(resolution)`, min 4). Cell size = `VOXEL_CHUNK_SIZE (4) / N`. | Higher → smaller blocks / finer MC surface inside each chunk (more detail, heavier). Lower → chunkier Minecraft-like cubes. High values (esp. with large load radius) can hitch. |
-| **Load radius** | 0–4 (step 1) | Chebyshev radius in **chunks** around the camera chunk (`chunksAround`). Radius `r` loads a `(2r+1)³` cube of chunks. | `0` = only the chunk you’re in. `1` = that chunk plus neighbors (default). Higher = wider streamed world; more memory / mesh work. Orbit/pan to see new chunks appear at the edge. |
-| **Isolevel** | −2–2 | Solid when `density >= isolevel` (`isSolid`). Used by Interactive greedy mesh and Marching Cubes. | Raise → thinner terrain / more air (peaks may vanish). Lower → thicker fill, more solid ground under the surface. |
-| **Volume** | 0–2 | Mixes 3D noise into density: `density += sample3(x,y,z) * volume * height * 0.3` (`createDensityFunction`). | `0` = pure heightfield columns (flat vertical sides). Higher → caves, overhangs, and bumpy volume carved into / bulging from the surface. |
-| **Bleed** | 0–1 | 3D blur of the density field before meshing (`applyBleed3D`). Blur radius ≈ `round(bleed * 2)`; mixes each cell with neighbors by `bleed` amount. Uses a world-sampled halo so chunk borders stay seamless. | `0` = hard voxel edges. Higher → softer, melted transitions between solid and air (blocks feel less binary; MC surface gets smoother). |
-| **Jump In** / **Exit** | buttons | Toggles first-person walk (`FirstPersonControls`). Jump In places the camera at eye height on the terrain at the orbit focus; Exit / **Esc** restores orbit. | Stand in the field: WASD/arrows move, click canvas for mouse-look (pointer lock). Camera Y follows the heightfield. Orbit/pan unchanged when not in first-person. |
-
----
-
-## Meshing
-
-Voxels tab only.
-
-| Control | Range (UI) | What it does | Visual effect |
-|---|---|---|---|
-| **Mode** | Marching Cubes / Interactive | `renderMode`: `'marching'` → `extractMarchingCubesFromGrid`; `'interactive'` → `buildGreedyInteractiveMesh` (face culling + greedy quads). Same density grid for both. | **Marching Cubes** = smooth triangulated isosurface. **Interactive** = blocky colored cubes; click removes a voxel, shift-click adds one next to the clicked face. |
-| **Overlap** | 0.5–2 | Stored on `VoxelParams.overlap`. Intended as “how much interactive cubes expand into neighbors,” but the current greedy mesh **does not read this value** (kept for UI / future use). | **No visible change** with the current Interactive or Marching Cubes paths. |
-| **Reset voxels** | button | Writes `defaultVoxelParams` (Interactive, res 16, isolevel 0, bleed 0.1, overlap 1, volume 0, load radius 1). | Restores the default voxel look and streaming distance. Does **not** reset Noise/Field or the height gradient. |
-
----
-
-## Height Gradient
-
-Voxels tab only. Used only by **Interactive** mode to color face vertices from world Y (`sampleHeightGradient` / `colorAtY` in `voxelGreedyMesh.ts`). Marching Cubes does not use these stops.
-
-| Control | What it does | Visual effect |
-|---|---|---|
-| **Preview strip** | CSS gradient from sorted stops (`gradientCss`), low → high. | Live preview of the height→color ramp; not a separate param. |
-| **Color** (per stop) | Hex color on that stop; RGB-lerped between neighbors at sample time. | Changes the tint of voxels at that relative height band. |
-| **Position** (per stop) | Relative height in `[0, 1]` (`0` = lowest, `1` = highest). World Y maps roughly via `wy / (colorHeight * 2) + 0.5` where `colorHeight` is terrain **Height**. | Slides where that color sits on the mountains (e.g. snow only on peaks). |
-| **↑ / ↓** | Swaps this stop’s position with the previous/next stop in sorted order. | Reorders the ramp without typing positions. |
-| **Remove** | Deletes a stop (disabled if only 2 remain). | Fewer bands; wider blends between remaining colors. |
-| **Add stop** | Inserts a new stop (default green) near the midpoint of the range. | Extra color band on the Interactive terrain. |
-
-Default stops: blue `#1238c8` at `0`, red `#ff1a1a` at `1`.
+| **3D / 2D / Voxels / Shaders** | Sets `ViewMode` — which main canvas is mounted. | Switches between heightfield, 2D noise/sim, infinite voxels, and shader studies. |
+| **Experiential Playground \| EP** | Full-width tab under the four above (`mode === 'ep'`). | Grayscale playground: streamed voxels + gray Glitch shader + fog + bright signs + cables + Jump In. |
+| **Field / Sim** (2D only) | Sets `TwoDTab`. | **Field** = raw noise + Noise/Field/Raw 2D. **Sim** = erosion heightmap + Hydraulic/Droplet/Sediment/Map. |
 
 ---
 
 ## Noise
 
-Shown in **3D** and **2D → Field** (and the same params still feed voxels when you switch tabs). Built by `createNoise` / `createNoise3D` (FastNoiseLite, seed `1337`).
+Shown whenever the shared terrain panel is up (not on EP or 2D Sim). Built by `configureNoise` → `createNoise` / `createNoise3D` (FastNoiseLite, seed `1337`).
 
-| Control | What it does | Visual effect |
-|---|---|---|
-| **Type** | Selects `noiseId` and which FastNoiseLite noise / fractal mode runs. | Changes the “character” of hills: smooth simplex, sharp ridges, cellular cells, etc. Updates 3D mesh, Raw 2D preview, erosion base map, and voxel density. |
+| Control | Range (UI) | What it does | Visual effect |
+|---|---|---|---|
+| **Type** | dropdown | Selects `noiseId` and which FastNoiseLite noise / fractal mode runs. | Changes hill “character”: simplex, ridges, cellular, etc. Updates 3D, Raw 2D, erosion base, voxels, shaders, EP. |
+| **(type extra)** | per-type | See table below. | Type-specific tweak (lacunarity / gain / jitter / strength). |
+| **Frequency** | 0.02–1.5 | `SetFrequency(frequency)` — how zoomed-in the noise pattern is. | Higher → finer, tighter features. Lower → large sweeping landforms. |
+| **Amplitude** | 0–4 | Scales noise into terrain height (`terrainAmplitude`). 3D: `noise * amplitude`. Voxels: surface / floor / volume / color height. | Higher → taller peaks / deeper valleys. Lower → flatter ground. Does **not** change Raw 2D grayscale (only displacement / density scale). |
+| **Octaves** | 1–12 | `SetFractalOctaves`. If `1`, fractal type is `None`; else FBm (unless type forces Ridged / Ping Pong). | More octaves → finer wrinkles on large shapes. `1` → single smooth wave. |
+| **Persistence** | 0.05–1 | Base `SetFractalGain` — how much each successive octave contributes. Overridden when the type’s extra **is** Gain (Simplex S, Ridged, Value). | Higher → rougher, noisier detail. Lower → smoother, large-scale shapes dominate. |
+
+Legacy mirrors: `zoom` ≈ `frequency / 0.12`, `height` = `amplitude`, `layers` = `octaves` (kept in sync via `normalizeTerrainPatch`).
 
 ### Type-specific extra slider
 
-The second Noise slider’s **label and meaning** follow the selected type (`NOISE_OPTIONS` + `createNoise` switch):
-
 | Type | Extra label | Wired to | Visual effect |
 |---|---|---|---|
-| **Simplex** | Lacunarity | `SetFractalLacunarity` | Higher → each FBm octave jumps to a much higher frequency → busier, more crumpled detail when Layers &gt; 1. |
-| **Simplex S** | Gain | `SetFractalGain` | Higher → later octaves stay louder → rougher, noisier surface. |
-| **Perlin** | Lacunarity | `SetFractalLacunarity` | Same idea as Simplex lacunarity, with Perlin’s look. |
-| **Ridged** | Gain | Ridged fractal + `SetFractalGain` | Stronger ridge emphasis → sharper mountain crests / canyon edges. |
-| **Cellular** | Jitter | `SetCellularJitter` | `0` = rigid cell lattice; toward `1` = more irregular cell boundaries (Worley-like blotches). |
-| **Value** | Gain | `SetFractalGain` | Louder fine octaves on value noise → blockier / grainier field. |
-| **Ping Pong** | Strength | `SetFractalPingPongStrength` | Stronger ping-pong fractal → more rippled, banded undulation. |
+| **Simplex** | Lacunarity | `SetFractalLacunarity` | Higher → each FBm octave jumps frequency harder → busier detail when Octaves &gt; 1. |
+| **Simplex S** | Gain | `SetFractalGain` (overrides Persistence) | Later octaves louder → rougher surface. |
+| **Perlin** | Lacunarity | `SetFractalLacunarity` | Same idea as Simplex lacunarity, Perlin look. |
+| **Ridged** | Gain | Ridged fractal + `SetFractalGain` | Stronger ridges / canyon edges. |
+| **Cellular** | Jitter | `SetCellularJitter` | `0` = rigid cells; higher → irregular Worley-like blotches. |
+| **Value** | Gain | `SetFractalGain` | Louder fine octaves → grainier field. |
+| **Ping Pong** | Strength | `SetFractalPingPongStrength` | Stronger banded / rippled undulation. |
 
 ---
 
 ## Field
 
-Shared terrain shaping (`TerrainParams`). Affects 3D mesh, Raw 2D, erosion source map, and voxel heightfield.
-
 | Control | Range (UI) | What it does | Visual effect |
 |---|---|---|---|
-| **Zoom** | 0.1–24 | Noise frequency = `zoom * 0.12` (`SetFrequency`). | Higher → features shrink (more hills packed into the same world). Lower → large, sweeping landforms. |
-| **Height** | 0–4 | 3D: vertex Z = `noise * height`. Voxels: surface height scale and floor at `-height`; also scales volume perturbation and Interactive color mapping (`colorHeight`). | Higher → taller peaks / deeper valleys. Lower → flatter slab. |
-| **Layers** | 1–12 | Fractal octaves (`SetFractalOctaves`). If `1`, fractal type is `None`; otherwise FBm (unless the noise type overrides, e.g. Ridged / Ping Pong). | More layers → finer wrinkles stacked on large shapes. `1` → single smooth wave, no octave detail. |
-| **Grid detail** | 4–192 | 3D plane segment count: `PlaneGeometry(4, 4, detail, detail)`. **Not** used by the voxel chunk resolution. | Higher → smoother-looking 3D mesh (more triangles). Lower → faceted, low-poly hills. Raw 2D / voxels ignore this slider. |
+| **Grid detail** | 4–192 | 3D plane segment count: `PlaneGeometry(4, 4, detail, detail)`. | Higher → smoother 3D mesh. Lower → faceted hills. **Not** voxel chunk resolution (use Study mesh / Voxel World **Resolution**). |
 
 ---
 
@@ -108,54 +67,153 @@ Shared terrain shaping (`TerrainParams`). Affects 3D mesh, Raw 2D, erosion sourc
 
 | Control | What it does | Visual effect |
 |---|---|---|
-| **Preview canvas** | `NoiseMap` at 96×96 in the panel (full-page 2D Field view uses 256×96… actually 256). Samples `createNoise(params)` over a fixed extent (±2 in noise space), maps `(-1…1) → grayscale`. | Live black-and-white picture of the same field the 3D mesh and voxels use. No extra sliders — it only reacts to **Noise** and **Field** (Zoom / Layers / Type / extra; Height does not change the grayscale tones, only 3D displacement / voxel scale). |
+| **Preview canvas** | `NoiseMap` at 96×96 in the panel (full 2D Field view uses 256). Samples `createNoise(params)`, maps to grayscale. | Live B&W picture of the noise field. Reacts to Type / Frequency / Octaves / Persistence / extras — not Amplitude. |
 
 ---
 
-## 2D Sim (extra panel sections)
+## Voxel World
 
-Visible only under **2D → Sim**. Not in the Voxel/Noise accordion list above, but they are control-panel settings.
+**Voxels** tab only. `VoxelParams` → `buildVoxelChunk` / `VoxelScene` streaming.
+
+| Control | Range (UI) | What it does | Visual effect |
+|---|---|---|---|
+| **Jump In** / **Exit** | buttons | First-person (`FirstPersonControls`). Also on EP **Walk**. | Stand on terrain at orbit focus; WASD/arrows; click for pointer-lock look; Esc / Exit → orbit. Height follows `createNoise` × amplitude. |
+| **Resolution** | 4–64 | Cells per axis per chunk (`N³`). Cell size = `VOXEL_CHUNK_SIZE (4) / N`. | Higher → finer blocks / heavier. |
+| **Load radius** | 0–4 | Chebyshev chunk radius around camera (`chunksAround`). | Wider streamed world; cost grows as `(2r+1)³` chunks. |
+| **Isolevel** | −2–2 | Solid when `density >= isolevel`. | Higher → thinner terrain; lower → thicker fill. |
+| **Volume** | 0–2 | `density += sample3 * volume * amplitude * 0.3`. | Caves / overhangs; `0` = pure heightfield columns. |
+| **Bleed** | 0–1 | 3D density blur (`applyBleed3D`) with world-space halo. | Softer solid/air transitions. |
+
+---
+
+## Meshing (Voxels)
+
+**Voxels** tab only. Uses `voxelParams.renderMode`.
+
+| Control | Range (UI) | What it does | Visual effect |
+|---|---|---|---|
+| **Mode** | Marching Cubes / Interactive | `'marching'` → `extractMarchingCubesFromGrid`; `'interactive'` → `buildGreedyInteractiveMesh`. | Smooth isosurface vs blocky greedy mesh; Interactive: click remove / shift-click add. |
+| **Overlap** | 0.5–2 | Stored on `VoxelParams.overlap`; **not read** by current greedy mesh. | No visible change today. |
+| **Reset voxels** | button | Restores `defaultVoxelParams`. | Default voxel look; does **not** reset Noise or gradient. |
+
+---
+
+## Height Gradient
+
+**Voxels** tab only. Colors **Interactive** faces by world Y (`sampleHeightGradient`). Marching Cubes uses its own height→RGB path.
+
+| Control | What it does | Visual effect |
+|---|---|---|
+| **Preview strip** | CSS ramp from stops. | Live low→high preview. |
+| **Color / Position** | Per-stop hex + `[0,1]` height. | Tints bands along elevation (`colorHeight` = amplitude). |
+| **↑ / ↓ / Remove / Add stop** | Reorder, delete (min 2), or add stops. | Rebuilds the Interactive color ramp. |
+
+Default: blue `#1238c8` @ 0 → red `#ff1a1a` @ 1.
+
+---
+
+## Shaders tab
+
+Isolated study viewport (`ShaderScene`): same density builders + chosen mesher, then `ShaderMaterial` studies. Does **not** use Voxels streaming/edit.
+
+### Shader study
+
+| Control | What it does | Visual effect |
+|---|---|---|
+| **Study** (dropdown) | `ShaderStudyId`: displace / toon / contact / glitch. | Swaps custom vertex/fragment shaders on the study mesh. Description text updates under the dropdown. |
+
+| Study | What it does |
+|---|---|
+| **Vertex Displacement** | Animates vertices along normals with sine/noise waves. |
+| **Toon** | Stepped lighting + fresnel outline (Monument Valley–like). |
+| **Contact Shadows** | Warm crevice darkening (Sable-like). |
+| **Glitch** | RGB split, scanlines, digital noise (`uGlitch`). |
+
+### Meshing (Shaders)
+
+| Control | What it does | Visual effect |
+|---|---|---|
+| **Mode** | Separate `shaderMeshMode` — **not** `voxelParams.renderMode`. | Marching Cubes or Interactive geometry for the study; active shader applies on top. Voxels tab mode unchanged. |
+
+### Study mesh
+
+| Control | Range | What it does | Visual effect |
+|---|---|---|---|
+| **Resolution / Isolevel / Volume / Bleed** | Same ranges as Voxel World | Rebuilds the study chunk(s) via `buildVoxelChunk` + selected mesher. | Same meanings as Voxel World, but only the Shaders study mesh (chunks `cy = -1` and `0`). |
+
+### Height gradient (Shaders)
+
+Same shared `heightGradient` / `GradientEditor` as Voxels. Paints Interactive study-mesh faces by height; Marching Cubes study meshes ignore vertex colors (shader uniforms drive look instead).
+
+---
+
+## Experiential Playground (EP)
+
+Full-width tab. Assembles streamed Interactive voxels + grayscale Glitch material + fog + bright signs + cables + Jump In (`ExperientialScene`, `EpParams`). Minimal panel — no full Noise/Field duplicate. Uses `EP_GRAY_GRADIENT` / gray lights (does not follow the shared Height gradient colors).
+
+### Atmosphere
+
+| Control | Range (UI) | What it does | Visual effect |
+|---|---|---|---|
+| **Fog density** | 0–0.15 | `FogExp2` density; color `EP_FOG_COLOR` (`#1a1a1a`). | Higher → thicker charcoal fade into the distance. |
+| **Glitch intensity** | 0–2 | Uniform `uGlitch` on the grayscale Glitch `ShaderMaterial`. | Stronger scanlines and luminance noise bursts (no chromatic color). |
+| **Neon density** | 0–1 | Chance of scattering bright gray “sign” boxes on surface cells; also feeds peak picks for cables. | Higher → more bright voxels and more light-gray cable spans between tall spots. |
+
+### Walk
+
+| Control | What it does | Visual effect |
+|---|---|---|
+| **Jump In** / **Exit** | Same `FirstPersonControls` as Voxels (shared `firstPerson` state for `voxels` and `ep`). | Walk the grayscale field; Esc / Exit returns to orbit. |
+
+---
+
+## 2D Sim
+
+Visible only under **2D → Sim**.
 
 ### Hydraulic
 
 | Control | What it does | Visual effect |
 |---|---|---|
-| **Start** | Begins the erosion loop (`erodeMap` each frame while `running`). | Channels and sediment start carving the heightmap. |
-| **Stop** | Clears `running`. | Simulation freezes mid-carve. |
-| **Reset** | Rebuilds the heightmap from the current Noise/Field via `createHeightmap`. | Scrubs erosion; back to the fresh noise landscape. |
+| **Start / Stop** | Toggles erosion loop. | Carves or freezes the heightmap. |
+| **Reset** | `createHeightmap` from current Noise params. | Fresh uneroded noise landscape. |
 
 ### Droplet
 
 | Control | Range | What it does | Visual effect |
 |---|---|---|---|
-| **Droplets** | 1–500 | How many water agents spawn per erosion step. | Higher → faster, denser carving each tick. |
-| **Lifetime** | 4–200 | Max steps each droplet walks downhill. | Longer paths → longer channels before the drop dies. |
-| **Inertia** | 0–0.95 | Blends previous direction with the height gradient (`dx = dx * inertia - grad * (1 - inertia)`). | Higher → straighter, momentum-heavy streams. Lower → snappier turns into local slopes. |
-| **Gravity** | 0.1–24 | Speeds the droplet from downhill height change. | Higher → faster, more aggressive erosion when descending. |
+| **Droplets** | 1–500 | Agents per erosion step. | Denser / faster carving. |
+| **Lifetime** | 4–200 | Steps per droplet. | Longer channels. |
+| **Inertia** | 0–0.95 | Blend prior direction vs slope. | Straighter vs snappier turns. |
+| **Gravity** | 0.1–24 | Speeds downhill motion. | More aggressive descent carving. |
 
 ### Sediment
 
 | Control | Range | What it does | Visual effect |
 |---|---|---|---|
-| **Capacity** | 0.1–24 | Scales how much sediment water can carry from slope × speed × water. | Higher → deeper cuts before the drop is “full.” |
-| **Erosion** | 0–1 | Fraction of (capacity − sediment) carved from the map when below capacity. | Higher → digs gullies faster. |
-| **Deposition** | 0–1 | Fraction of surplus sediment dropped when over capacity or moving uphill. | Higher → more silt banks / fills. |
-| **Evaporation** | 0.001–0.3 | `water *= 1 - evaporation` each step. | Higher → drops die sooner; shorter, weaker streams. |
-| **Min slope** | 0–0.2 | Floor on sediment capacity so flat areas still erode a little. | Higher → more wear even on gentle ground. |
-| **Radius** | 1–16 | Brush radius (cells) for deposit/erode stamps. | Higher → wider, softer channels; lower → thin trenches. |
+| **Capacity** | 0.1–24 | How much sediment water can carry. | Deeper cuts when high. |
+| **Erosion** | 0–1 | Carve rate below capacity. | Digs gullies faster. |
+| **Deposition** | 0–1 | Drop rate when over capacity / uphill. | More banks / fills. |
+| **Evaporation** | 0.001–0.3 | Water loss per step. | Shorter, weaker streams. |
+| **Min slope** | 0–0.2 | Capacity floor on flats. | More wear on gentle ground. |
+| **Radius** | 1–16 | Brush radius (cells). | Wider vs thin channels. |
 
 ### Map
 
 | Control | What it does | Visual effect |
 |---|---|---|
-| **Heightmap preview** | `HeightMapView` of the live `Float32Array` heightmap the sim edits. | Grayscale (or themed) picture of carved terrain; updates while running. |
+| **Heightmap preview** | Live `HeightMapView` of the sim buffer. | Shows carved terrain while running. |
 
 ---
 
 ## Defaults (quick reference)
 
-**Terrain:** Zoom `3`, Height `0.55`, Layers `4`, Grid detail `48`, Type Simplex, Lacunarity `2`.
+**Terrain / Noise:** Frequency `0.36`, Amplitude `0.55`, Octaves `4`, Persistence `0.5`, Grid detail `48`, Type Simplex, Lacunarity `2`.
 
 **Voxels:** Interactive, Resolution `16`, Load radius `1`, Isolevel `0`, Volume `0`, Bleed `0.1`, Overlap `1`.
+
+**Shaders:** Study Vertex Displacement, mesh mode Marching Cubes (independent of Voxels mode).
+
+**EP:** Fog density `0.045`, Glitch intensity `1`, Neon density `0.35`.
 
 **Erosion:** Droplets `48`, Lifetime `32`, Inertia `0.08`, Gravity `4`, Capacity `4`, Erosion `0.35`, Deposition `0.25`, Evaporation `0.02`, Min slope `0.01`, Radius `3`.

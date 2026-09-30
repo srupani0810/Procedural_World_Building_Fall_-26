@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { Float32BufferAttribute, PlaneGeometry } from 'three'
 import { heightToRgb } from './heightColor.ts'
-import { createNoise } from './terrainParams.ts'
+import { createNoise, terrainAmplitude } from './terrainParams.ts'
 import type { TerrainParams } from './terrainParams.ts'
 
 const SIZE = 4
@@ -27,7 +27,7 @@ function Terrain({ params }: { params: TerrainParams }) {
       const x = positions.getX(i)
       const y = positions.getY(i)
       const noise = sample(x, y)
-      positions.setZ(i, noise * params.height)
+      positions.setZ(i, noise * terrainAmplitude(params))
 
       const [r, g, b] = heightToRgb((noise + 1) * 0.5)
       const offset = i * 3

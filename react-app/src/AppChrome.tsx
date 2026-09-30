@@ -185,12 +185,12 @@ export default function AppChrome({
           <>
             <ChromeSection
               title="Atmosphere"
-              tip="Fog, glitch strength, and neon scatter for the combined cyberpunk playground."
+              tip="Fog, glitch strength, and bright-sign scatter for the grayscale experiential playground."
               defaultOpen
             >
               <p className="chrome-hint">
-                Infinite voxels + Glitch shader + fog, neon signs, and cable lines. Jump In to walk
-                the field.
+                Infinite voxels + grayscale Glitch shader + fog, bright signs, and cable lines.
+                Jump In to walk the field.
               </p>
               <Slider
                 label="Fog density"
@@ -354,6 +354,17 @@ export default function AppChrome({
                 display={voxelParams.bleed.toFixed(2)}
                 onChange={(bleed) => onVoxelChange({ bleed })}
               />
+            </ChromeSection>
+
+            <ChromeSection
+              title="Height gradient"
+              tip="Edit color stops that paint Interactive study-mesh faces by height (low → high). Shared with the Voxels tab."
+            >
+              <p className="chrome-hint">
+                Colors Interactive study-mesh faces by height. Add stops (0 = lowest, 1 =
+                highest); the mesh updates live. Same gradient as Voxels.
+              </p>
+              <GradientEditor stops={heightGradient} onChange={onHeightGradientChange} />
             </ChromeSection>
           </>
         ) : null}
@@ -631,7 +642,7 @@ export default function AppChrome({
           <>
             <ChromeSection
               title="Noise"
-              tip="Pick the noise algorithm and its extra parameter (lacunarity, gain, jitter, etc.)."
+              tip="Noise type plus frequency, amplitude, octaves, and persistence — live on the shared terrain field."
               defaultOpen
             >
               <label className="chrome-field">
@@ -663,39 +674,48 @@ export default function AppChrome({
                   })
                 }
               />
+              <Slider
+                label="Frequency"
+                value={params.frequency}
+                min={0.02}
+                max={1.5}
+                step={0.01}
+                display={params.frequency.toFixed(2)}
+                onChange={(frequency) => onChange({ frequency })}
+              />
+              <Slider
+                label="Amplitude"
+                value={params.amplitude}
+                min={0}
+                max={4}
+                step={0.01}
+                display={params.amplitude.toFixed(2)}
+                onChange={(amplitude) => onChange({ amplitude })}
+              />
+              <Slider
+                label="Octaves"
+                value={params.octaves}
+                min={1}
+                max={12}
+                step={1}
+                display={String(Math.round(params.octaves))}
+                onChange={(octaves) => onChange({ octaves })}
+              />
+              <Slider
+                label="Persistence"
+                value={params.persistence}
+                min={0.05}
+                max={1}
+                step={0.01}
+                display={params.persistence.toFixed(2)}
+                onChange={(persistence) => onChange({ persistence })}
+              />
             </ChromeSection>
 
             <ChromeSection
               title="Field"
-              tip="Shape the shared terrain field: zoom, height, layers, and grid detail."
+              tip="Mesh sampling density for the 3D heightfield view (voxels use Resolution instead)."
             >
-              <Slider
-                label="Zoom"
-                value={params.zoom}
-                min={0.1}
-                max={24}
-                step={0.1}
-                display={params.zoom.toFixed(1)}
-                onChange={(zoom) => onChange({ zoom })}
-              />
-              <Slider
-                label="Height"
-                value={params.height}
-                min={0}
-                max={4}
-                step={0.01}
-                display={params.height.toFixed(2)}
-                onChange={(height) => onChange({ height })}
-              />
-              <Slider
-                label="Layers"
-                value={params.layers}
-                min={1}
-                max={12}
-                step={1}
-                display={String(Math.round(params.layers))}
-                onChange={(layers) => onChange({ layers })}
-              />
               <Slider
                 label="Grid detail"
                 value={params.detail}

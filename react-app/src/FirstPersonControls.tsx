@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { Euler, Vector3 } from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
-import { createNoise } from './terrainParams.ts'
+import { createNoise, terrainAmplitude } from './terrainParams.ts'
 import type { TerrainParams } from './terrainParams.ts'
 
 const EYE_HEIGHT = 0.38
@@ -30,7 +30,7 @@ export function FirstPersonControls({ enabled, terrain, onExit }: FirstPersonCon
   const placed = useRef(false)
 
   const sample = useMemo(() => createNoise(terrain), [terrain])
-  const heightScale = Math.max(terrain.height, 0.01)
+  const heightScale = terrainAmplitude(terrain)
   const surfaceAt = (x: number, z: number) => sample(x, z) * heightScale
 
   // Enter: stand on terrain at the orbit focus (view center); exit cleans up pointer lock

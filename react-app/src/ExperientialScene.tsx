@@ -12,10 +12,10 @@ import {
 } from 'three'
 import { FirstPersonControls } from './FirstPersonControls.tsx'
 import type { EpParams } from './epParams.ts'
-import { EP_FOG_COLOR } from './epParams.ts'
+import { EP_FOG_COLOR, EP_GRAY_GRADIENT } from './epParams.ts'
 import type { GradientStop } from './heightGradient.ts'
 import { createStudyMaterial } from './shaderStudies.ts'
-import { createNoise, type TerrainParams } from './terrainParams.ts'
+import { createNoise, terrainAmplitude, type TerrainParams } from './terrainParams.ts'
 import { buildGreedyInteractiveMesh } from './voxelGreedyMesh.ts'
 import {
   buildVoxelChunk,
@@ -46,7 +46,8 @@ type ChunkEntry = {
 }
 
 const STREAM_INTERVAL_MS = 120
-const NEON_COLORS = ['#ff1a1a', '#ff6a00', '#ff3344', '#ff9a1a']
+const NEON_COLORS = ['#f0f0f0', '#c8c8c8', '#9a9a9a', '#e8e8e8']
+const EP_MESH_GRADIENT: GradientStop[] = EP_GRAY_GRADIENT.map((stop) => ({ ...stop }))
 
 function disposeEntry(entry: ChunkEntry) {
   entry.geometry.dispose()
@@ -112,7 +113,7 @@ function GlitchTerrainChunks({
   )
 
   const material = useMemo(() => {
-    const mat = createStudyMaterial('glitch', { glitchIntensity })
+    const mat = createStudyMaterial('glitch', { glitchIntensity, grayscale: true })
     materialRef.current = mat
     return mat
   }, [])
@@ -129,7 +130,7 @@ function GlitchTerrainChunks({
     }
   }, [material])
 
-  const genKey = `${terrain.noiseId}|${terrain.zoom}|${terrain.height}|${terrain.layers}|${voxel.resolution}|${voxel.isolevel}|${voxel.bleed}|${voxel.volume}|${voxel.loadRadius}|${gradient.map((s) => `${s.position}:${s.color}`).join(';')}`
+  const genKey = `${terrain.noiseId}|${terrain.frequency}|${terrain.amplitude}|${terrain.octaves}|${terrain.persistence}|${voxel.resolution}|${voxel.isolevel}|${voxel.bleed}|${voxel.volume}|${voxel.loadRadius}|${gradient.map((s) => `${s.position}:${s.color}`).join(';')}`
 
   useEffect(() => {
     for (const entry of entriesRef.current.values()) disposeEntry(entry)
@@ -229,7 +230,7 @@ function CyberDecor({
   isolevel: number
 }) {
   const sample = useMemo(() => createNoise(terrain), [terrain])
-  const heightScale = Math.max(terrain.height, 0.01)
+  const heightScale = terrainAmplitude(terrain)
 
   const { neons, cablePositions } = useMemo(() => {
     const marks: NeonMark[] = []
@@ -313,9 +314,9 @@ function CyberDecor({
   const cableMat = useMemo(
     () =>
       new LineBasicMaterial({
-        color: '#39f0ff',
+        color: '#cfcfcf',
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.8,
         depthWrite: false,
       }),
     [],
@@ -369,7 +370,7 @@ function CyberDecor({
 export default function ExperientialScene({
   terrain,
   voxel,
-  gradient,
+  gradient: _sharedGradient,
   ep,
   firstPerson,
   onExitFirstPerson,
@@ -388,13 +389,13 @@ export default function ExperientialScene({
     >
       <color attach="background" args={[EP_FOG_COLOR]} />
       <FogController density={ep.fogDensity} color={EP_FOG_COLOR} />
-      <ambientLight intensity={0.22} />
-      <directionalLight position={[4, 7, 2]} intensity={0.55} color="#9eb8c8" />
-      <pointLight position={[2, 3, 2]} intensity={0.8} color="#ff4a1a" distance={12} />
+      <ambientLight intensity={0.28} />
+      <directionalLight position={[4, 7, 2]} intensity={0.65} color="#d0d0d0" />
+      <pointLight position={[2, 3, 2]} intensity={0.55} color="#f5f5f5" distance={12} />
       <GlitchTerrainChunks
         terrain={terrain}
         voxel={voxel}
-        gradient={gradient}
+        gradient={EP_MESH_GRADIENT}
         glitchIntensity={ep.glitchIntensity}
         onEntries={onEntries}
       />

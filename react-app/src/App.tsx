@@ -10,7 +10,7 @@ import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion
 import type { ErosionParams } from './erosion.ts'
 import { defaultEpParams } from './epParams.ts'
 import type { EpParams } from './epParams.ts'
-import { defaultTerrainParams } from './terrainParams.ts'
+import { defaultTerrainParams, normalizeTerrainPatch } from './terrainParams.ts'
 import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import { defaultHeightGradient } from './heightGradient.ts'
 import type { GradientStop } from './heightGradient.ts'
@@ -129,7 +129,9 @@ function App() {
         mapSize={HEIGHTMAP_SIZE}
         onMode={handleMode}
         onTwoDTab={handleTwoDTab}
-        onChange={(patch) => setParams((current) => ({ ...current, ...patch }))}
+        onChange={(patch) =>
+          setParams((current) => ({ ...current, ...normalizeTerrainPatch(patch) }))
+        }
         onVoxelChange={(patch) => setVoxelParams((current) => ({ ...current, ...patch }))}
         onHeightGradientChange={setHeightGradient}
         onErosion={(patch) => setErosion((current) => ({ ...current, ...patch }))}

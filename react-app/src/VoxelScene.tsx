@@ -121,7 +121,7 @@ function InfiniteVoxelWorld({ terrain, voxel, gradient }: WorldProps) {
     [terrain, voxel],
   )
 
-  const genKey = `${terrain.noiseId}|${terrain.zoom}|${terrain.height}|${terrain.layers}|${voxel.resolution}|${voxel.isolevel}|${voxel.bleed}|${voxel.volume}|${voxel.renderMode}|${voxel.loadRadius}|${gradient.map((s) => `${s.position}:${s.color}`).join(';')}`
+  const genKey = `${terrain.noiseId}|${terrain.frequency}|${terrain.amplitude}|${terrain.octaves}|${terrain.persistence}|${voxel.resolution}|${voxel.isolevel}|${voxel.bleed}|${voxel.volume}|${voxel.renderMode}|${voxel.loadRadius}|${gradient.map((s) => `${s.position}:${s.color}`).join(';')}`
 
   // Full rebuild when density / mesh inputs change
   useEffect(() => {

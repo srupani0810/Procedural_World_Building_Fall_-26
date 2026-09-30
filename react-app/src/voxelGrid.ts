@@ -1,4 +1,4 @@
-import { createNoise, createNoise3D } from './terrainParams.ts'
+import { createNoise, createNoise3D, terrainAmplitude } from './terrainParams.ts'
 import type { TerrainParams } from './terrainParams.ts'
 import { VOXEL_CHUNK_SIZE } from './voxelParams.ts'
 import type { VoxelParams } from './voxelParams.ts'
@@ -51,7 +51,7 @@ export function chunkOrigin(c: ChunkCoord, chunkSize = VOXEL_CHUNK_SIZE): [numbe
 export function createDensityFunction(terrain: TerrainParams, voxel: VoxelParams) {
   const sample2 = createNoise(terrain)
   const sample3 = createNoise3D(terrain)
-  const height = Math.max(terrain.height, 0.01)
+  const height = terrainAmplitude(terrain)
   const volume = clamp(voxel.volume, 0, 2)
   const floorY = -height
 
@@ -79,7 +79,7 @@ export function buildVoxelChunk(
   const cellSize = VOXEL_CHUNK_SIZE / size
   const origin = chunkOrigin(chunk)
   const densityAt = createDensityFunction(terrain, voxel)
-  const colorHeight = Math.max(terrain.height, 0.01)
+  const colorHeight = terrainAmplitude(terrain)
   const bleed = clamp(voxel.bleed, 0, 1)
 
   // Optional halo so 3D bleed can use neighbors outside this chunk (still world-sampled).

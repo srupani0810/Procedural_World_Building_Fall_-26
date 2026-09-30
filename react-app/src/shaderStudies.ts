@@ -191,6 +191,30 @@ void main() {
 }
 `
 
+/** EP playground: same glitch motion, luminance-only so the scene stays gray. */
+const GLITCH_GRAY_FRAG = /* glsl */ `
+${COMMON_FRAG_HEAD}
+uniform float uGlitch;
+void main() {
+  vec3 base = heightBase();
+  float luma = dot(base, vec3(0.299, 0.587, 0.114));
+  vec3 lit = vec3(luma) * (0.35 + 0.65 * max(dot(safeNormal(vNormal), normalize(uLightDir)), 0.0));
+
+  float gAmt = clamp(uGlitch, 0.0, 2.0);
+  float wobble = (0.04 + 0.03 * sin(uTime * 8.0 + vWorldPos.y * 3.0)) * gAmt;
+  float n0 = hash(vWorldPos.xz + uTime);
+  float n1 = hash(vWorldPos.zx - uTime * 1.3);
+  float scan = sin(gl_FragCoord.y * 1.35 + uTime * 20.0) * 0.08 * gAmt;
+  float gray = lit.r + (n0 - n1) * wobble - scan;
+
+  float burst = step(0.92, hash(floor(gl_FragCoord.xy / 4.0) + floor(uTime * 6.0)));
+  float burstL = hash(gl_FragCoord.xy + uTime);
+  gray = mix(gray, burstL, burst * 0.55 * gAmt);
+
+  gl_FragColor = vec4(vec3(clamp(gray, 0.0, 1.0)), 1.0);
+}
+`
+
 const SOURCES: Record<
   ShaderStudyId,
   { vertexShader: string; fragmentShader: string }
@@ -203,19 +227,26 @@ const SOURCES: Record<
 
 export function createStudyMaterial(
   study: ShaderStudyId,
-  options?: { glitchIntensity?: number },
+  options?: { glitchIntensity?: number; grayscale?: boolean },
 ): ShaderMaterial {
   const source = SOURCES[study]
+  const grayscale = Boolean(options?.grayscale)
+  const fragmentShader =
+    study === 'glitch' && grayscale ? GLITCH_GRAY_FRAG : source.fragmentShader
   return new ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
       uLightDir: { value: new Vector3(0.45, 0.85, 0.35).normalize() },
-      uColorLow: { value: new Color('#1238c8') },
-      uColorHigh: { value: new Color('#ff1a1a') },
+      uColorLow: {
+        value: new Color(grayscale ? '#2a2a2a' : '#1238c8'),
+      },
+      uColorHigh: {
+        value: new Color(grayscale ? '#d4d4d4' : '#ff1a1a'),
+      },
       uGlitch: { value: options?.glitchIntensity ?? 1 },
     },
     vertexShader: source.vertexShader,
-    fragmentShader: source.fragmentShader,
+    fragmentShader,
     side: DoubleSide,
     toneMapped: false,
     // Don't set vertexColors — custom attribute handling only
