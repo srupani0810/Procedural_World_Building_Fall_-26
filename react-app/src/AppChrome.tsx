@@ -28,6 +28,9 @@ type AppChromeProps = {
   onVoxelChange: (patch: Partial<VoxelParams>) => void
   onHeightGradientChange: (stops: GradientStop[]) => void
   onErosion: (patch: Partial<ErosionParams>) => void
+  firstPerson: boolean
+  onJumpIn: () => void
+  onExitFirstPerson: () => void
   onStart: () => void
   onStop: () => void
   onReset: () => void
@@ -50,6 +53,9 @@ export default function AppChrome({
   onVoxelChange,
   onHeightGradientChange,
   onErosion,
+  firstPerson,
+  onJumpIn,
+  onExitFirstPerson,
   onStart,
   onStop,
   onReset,
@@ -137,11 +143,35 @@ export default function AppChrome({
                 Infinite heightfield (same noise as 3D) streamed as chunks around the camera.
                 Pan / orbit to load new chunks. Interactive: click to remove, shift-click to add.
               </p>
+              <div className="chrome-actions">
+                {firstPerson ? (
+                  <button
+                    type="button"
+                    className="chrome-reset chrome-reset-full"
+                    onClick={onExitFirstPerson}
+                  >
+                    Exit
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="chrome-reset chrome-reset-full"
+                    onClick={onJumpIn}
+                  >
+                    Jump In
+                  </button>
+                )}
+              </div>
+              {firstPerson ? (
+                <p className="chrome-hint">
+                  WASD / arrows walk · click canvas to look (pointer lock) · Esc or Exit to leave
+                </p>
+              ) : null}
               <Slider
                 label="Resolution"
                 value={voxelParams.resolution}
-                min={8}
-                max={24}
+                min={4}
+                max={64}
                 step={1}
                 display={`${Math.round(voxelParams.resolution)}³ / chunk`}
                 onChange={(resolution) => onVoxelChange({ resolution })}
@@ -150,7 +180,7 @@ export default function AppChrome({
                 label="Load radius"
                 value={voxelParams.loadRadius}
                 min={0}
-                max={2}
+                max={4}
                 step={1}
                 display={`${Math.round(voxelParams.loadRadius)} chunk`}
                 onChange={(loadRadius) => onVoxelChange({ loadRadius })}
@@ -158,8 +188,8 @@ export default function AppChrome({
               <Slider
                 label="Isolevel"
                 value={voxelParams.isolevel}
-                min={-1}
-                max={1}
+                min={-2}
+                max={2}
                 step={0.01}
                 display={voxelParams.isolevel.toFixed(2)}
                 onChange={(isolevel) => onVoxelChange({ isolevel })}
@@ -168,7 +198,7 @@ export default function AppChrome({
                 label="Volume"
                 value={voxelParams.volume}
                 min={0}
-                max={1.5}
+                max={2}
                 step={0.01}
                 display={voxelParams.volume.toFixed(2)}
                 onChange={(volume) => onVoxelChange({ volume })}
@@ -209,8 +239,8 @@ export default function AppChrome({
               <Slider
                 label="Overlap"
                 value={voxelParams.overlap}
-                min={0.7}
-                max={1.2}
+                min={0.5}
+                max={2}
                 step={0.01}
                 display={voxelParams.overlap.toFixed(2)}
                 onChange={(overlap) => onVoxelChange({ overlap })}
@@ -266,7 +296,7 @@ export default function AppChrome({
                 label="Droplets"
                 value={erosion.droplets}
                 min={1}
-                max={200}
+                max={500}
                 step={1}
                 display={String(Math.round(erosion.droplets))}
                 onChange={(droplets) => onErosion({ droplets })}
@@ -275,7 +305,7 @@ export default function AppChrome({
                 label="Lifetime"
                 value={erosion.lifetime}
                 min={4}
-                max={80}
+                max={200}
                 step={1}
                 display={String(Math.round(erosion.lifetime))}
                 onChange={(lifetime) => onErosion({ lifetime })}
@@ -284,7 +314,7 @@ export default function AppChrome({
                 label="Inertia"
                 value={erosion.inertia}
                 min={0}
-                max={0.8}
+                max={0.95}
                 step={0.01}
                 display={erosion.inertia.toFixed(2)}
                 onChange={(inertia) => onErosion({ inertia })}
@@ -292,8 +322,8 @@ export default function AppChrome({
               <Slider
                 label="Gravity"
                 value={erosion.gravity}
-                min={0.2}
-                max={12}
+                min={0.1}
+                max={24}
                 step={0.1}
                 display={erosion.gravity.toFixed(1)}
                 onChange={(gravity) => onErosion({ gravity })}
@@ -307,8 +337,8 @@ export default function AppChrome({
               <Slider
                 label="Capacity"
                 value={erosion.capacity}
-                min={0.2}
-                max={12}
+                min={0.1}
+                max={24}
                 step={0.1}
                 display={erosion.capacity.toFixed(1)}
                 onChange={(capacity) => onErosion({ capacity })}
@@ -335,7 +365,7 @@ export default function AppChrome({
                 label="Evaporation"
                 value={erosion.evaporation}
                 min={0.001}
-                max={0.12}
+                max={0.3}
                 step={0.001}
                 display={erosion.evaporation.toFixed(3)}
                 onChange={(evaporation) => onErosion({ evaporation })}
@@ -344,7 +374,7 @@ export default function AppChrome({
                 label="Min slope"
                 value={erosion.minSlope}
                 min={0}
-                max={0.08}
+                max={0.2}
                 step={0.001}
                 display={erosion.minSlope.toFixed(3)}
                 onChange={(minSlope) => onErosion({ minSlope })}
@@ -353,7 +383,7 @@ export default function AppChrome({
                 label="Radius"
                 value={erosion.radius}
                 min={1}
-                max={8}
+                max={16}
                 step={1}
                 display={String(Math.round(erosion.radius))}
                 onChange={(radius) => onErosion({ radius })}
@@ -416,8 +446,8 @@ export default function AppChrome({
               <Slider
                 label="Zoom"
                 value={params.zoom}
-                min={0.4}
-                max={12}
+                min={0.1}
+                max={24}
                 step={0.1}
                 display={params.zoom.toFixed(1)}
                 onChange={(zoom) => onChange({ zoom })}
@@ -426,7 +456,7 @@ export default function AppChrome({
                 label="Height"
                 value={params.height}
                 min={0}
-                max={1.6}
+                max={4}
                 step={0.01}
                 display={params.height.toFixed(2)}
                 onChange={(height) => onChange({ height })}
@@ -435,7 +465,7 @@ export default function AppChrome({
                 label="Layers"
                 value={params.layers}
                 min={1}
-                max={8}
+                max={12}
                 step={1}
                 display={String(Math.round(params.layers))}
                 onChange={(layers) => onChange({ layers })}
@@ -443,8 +473,8 @@ export default function AppChrome({
               <Slider
                 label="Grid detail"
                 value={params.detail}
-                min={8}
-                max={96}
+                min={4}
+                max={192}
                 step={1}
                 display={String(Math.round(params.detail))}
                 onChange={(detail) => onChange({ detail })}

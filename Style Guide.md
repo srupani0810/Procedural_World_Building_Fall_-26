@@ -20,6 +20,63 @@ References to steal from, not copy: TouchDesigner’s operator viewer + paramete
 
 ---
 
+## UI references & figures
+
+Visual moodboard for **what the UI could look like** — screenshots, frame grabs, and diagrams. Images live in [`docs/style-guide/`](./docs/style-guide/). This section is for direction; the rules above still win when they conflict with a reference.
+
+### How to add a picture
+
+1. Save the file into `docs/style-guide/` (e.g. `touchdesigner-params.png`, `max-inspector.jpg`).
+2. Uncomment or copy a slot below and point the path at your file.
+3. Write one short caption: what to steal (layout, density, typography) — not “cool image.”
+
+```markdown
+![Short description](docs/style-guide/your-file.png)
+
+*Caption — what this reference is for.*
+```
+
+Optional: keep filenames lowercase with hyphens (`daw-mixer-strip.png`). Prefer PNG/WebP for UI chrome; JPG is fine for photos.
+
+### Panel / chrome
+
+<!-- Example (remove the comment markers after you add the file):
+![TouchDesigner parameter pane](docs/style-guide/touchdesigner-params.png)
+
+*Steal: dense labeled rows, small type, values always visible.*
+-->
+
+<!-- ![Max / MSP inspector](docs/style-guide/max-inspector.png) -->
+
+<!-- ![DAW or CNC mixer strip](docs/style-guide/mixer-strip.png) -->
+
+### Viewport + overlay composition
+
+<!-- ![Fullscreen viewport with thin side panel](docs/style-guide/viewport-overlay.png)
+
+*Steal: instrument panel vs marketing card; how much of the frame stays 3D.*
+-->
+
+### Type, color, and controls (close-ups)
+
+<!-- ![Slider / number box close-up](docs/style-guide/slider-closeup.png)
+
+*Steal: track weight, value placement, accent use.*
+-->
+
+### Other / sketches
+
+<!-- ![Hand sketch or Figma frame](docs/style-guide/sketch-01.png)
+
+*Note what idea this figure is testing.*
+-->
+
+| File (in `docs/style-guide/`) | Notes |
+|---|---|
+| *(add rows as you drop files)* | What to steal from it |
+
+---
+
 ## Color
 
 **One highlight.** Chrome stays near-neutral charcoal. The UI accent is red. Heightmaps may use a blue→red data ramp (low to high); that colormap is not a second chrome accent.

@@ -3,6 +3,7 @@ import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DoubleSide } from 'three'
 import type { BufferGeometry } from 'three'
+import { FirstPersonControls } from './FirstPersonControls.tsx'
 import type { GradientStop } from './heightGradient.ts'
 import type { TerrainParams } from './terrainParams.ts'
 import { extractMarchingCubesFromGrid } from './voxelExtract.ts'
@@ -18,10 +19,15 @@ import {
 import type { ChunkCoord, VoxelGrid } from './voxelGrid.ts'
 import type { VoxelParams } from './voxelParams.ts'
 
-type Props = {
+type WorldProps = {
   terrain: TerrainParams
   voxel: VoxelParams
   gradient: GradientStop[]
+}
+
+type Props = WorldProps & {
+  firstPerson: boolean
+  onExitFirstPerson: () => void
 }
 
 type ChunkEntry = {
@@ -65,6 +71,8 @@ function ChunkMesh({
 }) {
   const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
     if (!interactive || !event.face) return
+    // Avoid fighting first-person look / pointer lock
+    if (document.pointerLockElement) return
     event.stopPropagation()
 
     const normal = event.face.normal
@@ -102,7 +110,7 @@ function ChunkMesh({
   )
 }
 
-function InfiniteVoxelWorld({ terrain, voxel, gradient }: Props) {
+function InfiniteVoxelWorld({ terrain, voxel, gradient }: WorldProps) {
   const [entries, setEntries] = useState<ChunkEntry[]>([])
   const entriesRef = useRef<Map<string, ChunkEntry>>(new Map())
   const lastStreamAt = useRef(0)
@@ -210,7 +218,13 @@ function InfiniteVoxelWorld({ terrain, voxel, gradient }: Props) {
   )
 }
 
-export default function VoxelScene({ terrain, voxel, gradient }: Props) {
+export default function VoxelScene({
+  terrain,
+  voxel,
+  gradient,
+  firstPerson,
+  onExitFirstPerson,
+}: Props) {
   const interactive = voxel.renderMode === 'interactive'
 
   return (
@@ -236,11 +250,17 @@ export default function VoxelScene({ terrain, voxel, gradient }: Props) {
       <InfiniteVoxelWorld terrain={terrain} voxel={voxel} gradient={gradient} />
       <OrbitControls
         makeDefault
+        enabled={!firstPerson}
         enableDamping
         dampingFactor={0.08}
         enablePan
         minDistance={1.4}
         maxDistance={80}
+      />
+      <FirstPersonControls
+        enabled={firstPerson}
+        terrain={terrain}
+        onExit={onExitFirstPerson}
       />
     </Canvas>
   )

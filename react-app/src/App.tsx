@@ -24,6 +24,7 @@ function App() {
   )
   const [erosion, setErosion] = useState<ErosionParams>(defaultErosionParams)
   const [running, setRunning] = useState(false)
+  const [firstPerson, setFirstPerson] = useState(false)
   const [mapRevision, setMapRevision] = useState(0)
   const mapRef = useRef<Float32Array | null>(null)
   const paramsRef = useRef(params)
@@ -46,6 +47,9 @@ function App() {
     if (next !== '2d') {
       setRunning(false)
     }
+    if (next !== 'voxels') {
+      setFirstPerson(false)
+    }
   }
 
   const handleTwoDTab = (tab: TwoDTab) => {
@@ -65,7 +69,13 @@ function App() {
         {mode === '3d' ? (
           <Scene params={params} />
         ) : mode === 'voxels' ? (
-          <VoxelScene terrain={params} voxel={voxelParams} gradient={heightGradient} />
+          <VoxelScene
+            terrain={params}
+            voxel={voxelParams}
+            gradient={heightGradient}
+            firstPerson={firstPerson}
+            onExitFirstPerson={() => setFirstPerson(false)}
+          />
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -97,6 +107,9 @@ function App() {
         onVoxelChange={(patch) => setVoxelParams((current) => ({ ...current, ...patch }))}
         onHeightGradientChange={setHeightGradient}
         onErosion={(patch) => setErosion((current) => ({ ...current, ...patch }))}
+        firstPerson={firstPerson}
+        onJumpIn={() => setFirstPerson(true)}
+        onExitFirstPerson={() => setFirstPerson(false)}
         onStart={() => {
           ensureMap()
           setRunning(true)

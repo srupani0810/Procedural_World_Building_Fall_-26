@@ -23,13 +23,13 @@ export type NoiseOption = {
 }
 
 export const NOISE_OPTIONS: NoiseOption[] = [
-  { id: 'simplex', label: 'Simplex', extraLabel: 'Lacunarity', min: 1, max: 4, step: 0.05, fallback: 2 },
-  { id: 'simplexS', label: 'Simplex S', extraLabel: 'Gain', min: 0.1, max: 1, step: 0.01, fallback: 0.5 },
-  { id: 'perlin', label: 'Perlin', extraLabel: 'Lacunarity', min: 1, max: 4, step: 0.05, fallback: 2 },
-  { id: 'ridged', label: 'Ridged', extraLabel: 'Gain', min: 0.1, max: 1, step: 0.01, fallback: 0.5 },
-  { id: 'cellular', label: 'Cellular', extraLabel: 'Jitter', min: 0, max: 1, step: 0.01, fallback: 1 },
-  { id: 'value', label: 'Value', extraLabel: 'Gain', min: 0.1, max: 1, step: 0.01, fallback: 0.5 },
-  { id: 'pingpong', label: 'Ping Pong', extraLabel: 'Strength', min: 0.5, max: 3, step: 0.05, fallback: 2 },
+  { id: 'simplex', label: 'Simplex', extraLabel: 'Lacunarity', min: 1, max: 8, step: 0.05, fallback: 2 },
+  { id: 'simplexS', label: 'Simplex S', extraLabel: 'Gain', min: 0.05, max: 1.5, step: 0.01, fallback: 0.5 },
+  { id: 'perlin', label: 'Perlin', extraLabel: 'Lacunarity', min: 1, max: 8, step: 0.05, fallback: 2 },
+  { id: 'ridged', label: 'Ridged', extraLabel: 'Gain', min: 0.05, max: 1.5, step: 0.01, fallback: 0.5 },
+  { id: 'cellular', label: 'Cellular', extraLabel: 'Jitter', min: 0, max: 1.5, step: 0.01, fallback: 1 },
+  { id: 'value', label: 'Value', extraLabel: 'Gain', min: 0.05, max: 1.5, step: 0.01, fallback: 0.5 },
+  { id: 'pingpong', label: 'Ping Pong', extraLabel: 'Strength', min: 0.25, max: 6, step: 0.05, fallback: 2 },
 ]
 
 export type TerrainParams = {
