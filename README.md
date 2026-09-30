@@ -5,11 +5,11 @@ Interactive **React + Three.js** terrain playground for Cornell **DESIGN 6197**.
 ## Contents
 
 - [Progress by class](#progress-by-class)
-  - [Class 01 — Intro, Microscope & Git](#class-01--intro-microscope--git)
+  - [Class 01 — Intro](#class-01--intro-microscope--git)
   - [Class 02 — Web tools: React + Three.js](#class-02--web-tools-react--threejs)
-  - [Class 03 — Assignment 1: noise field](#class-03--assignment-1-noise-field)
-  - [Class 04 — Voxels & terraforming](#class-04--voxels--terraforming)
-  - [Class 05 — Assignment 2: shaders](#class-05--assignment-2-shaders)
+  - [Class 03 — Noise Field + Simulations](#class-03--assignment-1-noise-field)
+  - [Class 04 — Voxels](#class-04--voxels--terraforming)
+  - [Class 05 — Shaders](#class-05--assignment-2-shaders)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Getting started](#getting-started)
@@ -38,7 +38,7 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 
 **Class topics:** Traditional web stack (HTML / CSS / JS); tools — **React + Three.js** app shell.
 
-**App progress:** Vite + React canvas with orbit camera; center object (cube → blob → Halloween); live sliders; style-guide UI pass.
+**App progress:** React canvas with orbit camera; center object; live sliders; style-guide UI pass.
 
 <!-- ![Class 02](docs/progress/class-02/screenshot.png) -->
 
@@ -48,9 +48,11 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 
 **Class topics / Assignment 1:** 3D grid in the viewport; 2D view of a noise equation; apply noise to the 3D grid; slider controls for noise + grid resolution; shaping ops via dropdown (+ own sliders). Extensions: layered noise, noise-type menu, blending.
 
-**App progress:** **3D / 2D** tabs with FastNoiseLite heightfield; hydraulic erosion sim on the 2D map; blue→red height coloring on the solid 3D mesh; grayscale heightmap preview.
+**App progress:** ** 3D / 2D tabs; heightfield; hydraulic erosion sim on the 2D map; blue→red height coloring on the solid 3D mesh; grayscale heightmap preview.
 
-<!-- ![Class 03](docs/progress/class-03/screenshot.png) --> <img width="1497" height="850" alt="Screenshot 2026-09-09 at 12 25 22 PM" src="https://github.com/user-attachments/assets/a89b6f06-9762-4bfe-93f5-f4ff46b8d8a2" />
+<!-- ![Class 03](docs/progress/class-03/screenshot.png) --> 
+
+<img width="1497" height="850" alt="Screenshot 2026-09-09 at 12 25 22 PM" src="https://github.com/user-attachments/assets/a89b6f06-9762-4bfe-93f5-f4ff46b8d8a2" />
 
 <img width="1497" height="850" alt="Screenshot 2026-09-09 at 2 02 49 PM" src="https://github.com/user-attachments/assets/85570165-ecfe-4642-adf2-deece3f1e7c0" />
 
@@ -59,11 +61,16 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 
 **Deck:** [PWB — Class 04](https://www.figma.com/deck/nGInnCOpuzyqmq9z8mFUod/PWB---Class-04)
 
-**Class topics:** Geographic data, **voxels**, and terraforming (incl. Sebastian Lague–style references).
+**Class topics:** Geographic data, voxels, and terraforming.
 
-**App progress:** **Voxels** tab from the shared 3D field; real `density(x,y,z)` grid → **Marching Cubes** / **Interactive** (greedy mesh, gradient editor, click edit); infinite chunk streaming; dark/red accordion UI + tooltips.
+**App progress:** Voxels tab from the shared 3D field; grid → Marching Cubes / Interactive drop down; UI graphic changes; tooltips; gradient mapping.
 
 <!-- ![Class 04](docs/progress/class-04/screenshot.png) -->
+
+<img width="1503" height="852" alt="Screenshot 2026-09-29 at 8 06 59 PM" src="https://github.com/user-attachments/assets/7cb1f053-14a6-472b-9ab6-770eed933347" />
+
+<img width="1503" height="852" alt="Screenshot 2026-09-29 at 8 52 39 PM" src="https://github.com/user-attachments/assets/a91584cc-ea52-427b-b2a9-fd6b3bf656db" />
+
 
 ### Class 05 — Shaders
 
