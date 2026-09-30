@@ -10,10 +10,8 @@ Interactive **React + Three.js** terrain playground for Cornell **DESIGN 6197**.
   - [Class 03 — Noise Field + Simulations](#class-03--assignment-1-noise-field)
   - [Class 04 — Voxels](#class-04--voxels--terraforming)
   - [Class 05 — Shaders](#class-05--assignment-2-shaders)
-- [Features](#features)
 - [Requirements](#requirements)
 - [Getting started](#getting-started)
-- [Usage](#usage)
 - [Project structure](#project-structure)
 - [Built with](#built-with)
 - [Author](#author)
@@ -78,7 +76,7 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 
 **Class topics / Assignment 2:** Shader studies; show what shaders can do for simulations; choose strategies and why; dedicated in-app section to swap shader approaches.
 
-**App progress:** Shader notes in [`Tutorials/Shaders.md`](./Tutorials/Shaders.md); in-app shader swapper still to land — drop study screenshots here as you build them.
+**App progress:** Shader Studies; GLSL; technical implementation.
 
 <!-- ![Class 05](docs/progress/class-05/screenshot.png) -->
 
@@ -96,16 +94,6 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 4. For the next class deck: add `docs/progress/class-06/`, a TOC link, and a matching `### Class 06 — …` section (with the Figma deck URL).
 
 </details>
-
-## Features
-
-- **3D view** — rotatable heightfield mesh driven by FastNoiseLite (simplex and related types)
-- **2D view** — raw noise preview plus a hydraulic erosion simulation with start / stop / reset and parameter sliders
-- **Voxels view** — world-space density grid streamed in chunks around the camera
-  - **Interactive** — face-culled greedy mesh, custom height gradient colors, click to remove / shift-click to add
-  - **Marching Cubes** — smooth isosurface from the same density field
-- Shared **Noise** and **Field** controls (zoom, height, layers, grid detail) across views
-- Dark / red control panel with collapsible sections and chevron tooltips
 
 ## Requirements
 
@@ -136,15 +124,6 @@ Other scripts:
 npm run build    # production build → react-app/dist
 npm run preview  # preview the production build
 ```
-
-## Usage
-
-1. Use the **3D / 2D / Voxels** tabs at the top of the panel to switch views.
-2. Orbit the 3D / voxel scene with the mouse (drag to rotate, scroll to zoom).
-3. Open accordion sections (**Noise**, **Field**, **Voxel world**, **Meshing**, etc.) to tweak parameters.
-4. Hover a section’s expand/collapse arrow for a short tip on what that group controls.
-5. In **Voxels → Interactive**, click a face to remove a voxel; **shift-click** to add one next to the clicked face.
-6. In **2D**, open the erosion controls to start / stop / reset the simulation and adjust droplet & sediment parameters.
 
 ## Project structure
 
@@ -179,10 +158,10 @@ Class notes: [Tutorials](./Tutorials/) · planning: [Planning](./Planning/) · a
 ## Built with
 
 - [React](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vite.dev/)
 - [Three.js](https://threejs.org/) via [React Three Fiber](https://r3f.docs.pmnd.rs/) + [drei](https://github.com/pmndrs/drei)
-- [FastNoiseLite](https://github.com/Auburn/FastNoiseLite)
+
 
 ## Author
 
+**Sarah Rupani**
 Course project for **DESIGN 6197 — Procedural World Building**, Cornell University, Fall 2026.
