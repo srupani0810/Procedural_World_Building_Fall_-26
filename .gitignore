@@ -2,7 +2,7 @@
 .DS_Store
 Thumbs.db
 
-# Logs and local env
+# Logs and local env / secrets (never push)
 logs
 *.log
 npm-debug.log*
@@ -11,11 +11,17 @@ pnpm-debug.log*
 *.local
 .env
 .env.*
+!.env.example
 
-# Dependencies and build output
+# Dependencies and build output (Three.js / Vite app)
 node_modules/
 dist/
 dist-ssr/
+coverage/
+*.tsbuildinfo
+.vite/
+.cache/
+.turbo/
 
 # Editors
 .idea/
@@ -36,5 +42,5 @@ dist-ssr/
 # Accidental npm run at the vault root (no package.json here)
 /package-lock.json
 
-# Nested duplicate from an earlier Vite scaffold
+# Nested duplicate from an earlier Vite scaffold — do not push
 /react-app/react-app/

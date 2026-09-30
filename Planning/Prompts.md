@@ -2,6 +2,8 @@
 
 Prompts that changed the **Three.js app** (`react-app`). Tutorials, glossaries, Git, and planning notes are left out. Copy new app prompts to the bottom.
 
+**Always keep [`.gitignore`](../.gitignore) (and `react-app/.gitignore`) current** so build output, `node_modules`, caches, and `.env` secrets are never pushed to GitHub with Three.js changes.
+
 ---
 
 ## 2026-09-02

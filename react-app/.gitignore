@@ -7,10 +7,20 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies and build (do not push to GitHub)
 node_modules
 dist
 dist-ssr
+coverage
+*.tsbuildinfo
+.vite
+.cache
+
+# Local env / secrets
 *.local
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
