@@ -185,12 +185,12 @@ export default function AppChrome({
           <>
             <ChromeSection
               title="Atmosphere"
-              tip="Fog, glitch strength, and bright-sign scatter for the grayscale experiential playground."
+              tip="Dark mist and filigree grain — blocky Townscaper masses in a Voxel Cloud atmosphere. Click to add voxels; hold to remove."
               defaultOpen
             >
               <p className="chrome-hint">
-                Infinite voxels + grayscale Glitch shader + fog, bright signs, and cable lines.
-                Jump In to walk the field.
+                Dark blocky islands over water with porous filigree scaffold and soft mist. Click
+                a face to add a voxel beside it; press and hold (~400ms) to remove. Drag to orbit.
               </p>
               <Slider
                 label="Fog density"
@@ -202,22 +202,13 @@ export default function AppChrome({
                 onChange={(fogDensity) => onEpChange({ fogDensity })}
               />
               <Slider
-                label="Glitch intensity"
+                label="Filigree"
                 value={epParams.glitchIntensity}
                 min={0}
                 max={2}
                 step={0.01}
                 display={epParams.glitchIntensity.toFixed(2)}
                 onChange={(glitchIntensity) => onEpChange({ glitchIntensity })}
-              />
-              <Slider
-                label="Neon density"
-                value={epParams.neonDensity}
-                min={0}
-                max={1}
-                step={0.01}
-                display={epParams.neonDensity.toFixed(2)}
-                onChange={(neonDensity) => onEpChange({ neonDensity })}
               />
             </ChromeSection>
 

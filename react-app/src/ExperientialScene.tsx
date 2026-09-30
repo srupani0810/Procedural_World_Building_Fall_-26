@@ -1,22 +1,30 @@
 import { OrbitControls } from '@react-three/drei'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   BufferGeometry,
   Color,
+  DoubleSide,
   Float32BufferAttribute,
   FogExp2,
   LineBasicMaterial,
-  MeshBasicMaterial,
+  MeshLambertMaterial,
+  type Mesh,
   type ShaderMaterial,
 } from 'three'
 import { FirstPersonControls } from './FirstPersonControls.tsx'
 import type { EpParams } from './epParams.ts'
-import { EP_FOG_COLOR, EP_GRAY_GRADIENT } from './epParams.ts'
+import {
+  EP_FOG_COLOR,
+  EP_SCAFFOLD_DENSITY,
+  EP_SKY_COLOR,
+  EP_TOWN_GRADIENT,
+  EP_WATER_COLOR,
+} from './epParams.ts'
 import type { GradientStop } from './heightGradient.ts'
-import { createStudyMaterial } from './shaderStudies.ts'
+import { createEpMaterial } from './shaderStudies.ts'
 import { createNoise, terrainAmplitude, type TerrainParams } from './terrainParams.ts'
-import { buildGreedyInteractiveMesh } from './voxelGreedyMesh.ts'
+import { buildGreedyInteractiveMesh, hitToVoxelIndex } from './voxelGreedyMesh.ts'
 import {
   buildVoxelChunk,
   chunkKey,
@@ -46,8 +54,10 @@ type ChunkEntry = {
 }
 
 const STREAM_INTERVAL_MS = 120
-const NEON_COLORS = ['#f0f0f0', '#c8c8c8', '#9a9a9a', '#e8e8e8']
-const EP_MESH_GRADIENT: GradientStop[] = EP_GRAY_GRADIENT.map((stop) => ({ ...stop }))
+const HOLD_DELETE_MS = 400
+const TAP_MAX_MS = 220
+const DRAG_CANCEL_PX = 6
+const EP_MESH_GRADIENT: GradientStop[] = EP_TOWN_GRADIENT.map((stop) => ({ ...stop }))
 
 function disposeEntry(entry: ChunkEntry) {
   entry.geometry.dispose()
@@ -58,7 +68,15 @@ function hash2(ix: number, iz: number, salt: number) {
   return n - Math.floor(n)
 }
 
-/** Prefer Interactive greedy mesh for blocky cyberpunk terrain; reuse builders. */
+function cellWorldCenter(grid: VoxelGrid, ix: number, iy: number, iz: number) {
+  return [
+    grid.origin[0] + (ix + 0.5) * grid.cellSize,
+    grid.origin[1] + (iy + 0.5) * grid.cellSize,
+    grid.origin[2] + (iz + 0.5) * grid.cellSize,
+  ] as const
+}
+
+/** Interactive greedy mesh — blocky Townscaper masses on a Voxel Cloud density field. */
 function buildEpChunk(
   terrain: TerrainParams,
   voxel: VoxelParams,
@@ -88,17 +106,226 @@ function FogController({ density, color }: { density: number; color: string }) {
   return null
 }
 
-function GlitchTerrainChunks({
+function SoftWater() {
+  const mat = useMemo(
+    () =>
+      new MeshLambertMaterial({
+        color: EP_WATER_COLOR,
+        transparent: true,
+        opacity: 0.88,
+        depthWrite: false,
+      }),
+    [],
+  )
+  useEffect(() => () => mat.dispose(), [mat])
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, -0.12, 0]}
+      material={mat}
+      raycast={() => null}
+    >
+      <planeGeometry args={[220, 220]} />
+    </mesh>
+  )
+}
+
+type HoldState = {
+  center: readonly [number, number, number]
+  cellSize: number
+  startedAt: number
+}
+
+/** Townscaper-style tap-to-add / hold-to-delete on a streamed chunk mesh. */
+function EpEditMesh({
+  entry,
+  material,
+  voxel,
+  enabled,
+  onTapAdd,
+  onHoldDelete,
+}: {
+  entry: ChunkEntry
+  material: ShaderMaterial
+  voxel: VoxelParams
+  enabled: boolean
+  onTapAdd: (key: string, ix: number, iy: number, iz: number) => void
+  onHoldDelete: (key: string, ix: number, iy: number, iz: number) => void
+}) {
+  const holdRef = useRef<{
+    solid: { ix: number; iy: number; iz: number }
+    air: { ix: number; iy: number; iz: number } | null
+    startedAt: number
+    timer: number | null
+    deleted: boolean
+    dragged: boolean
+    pointerId: number
+    startX: number
+    startY: number
+  } | null>(null)
+  const [holdVisual, setHoldVisual] = useState<HoldState | null>(null)
+  const ghostRef = useRef<Mesh>(null)
+  const entryRef = useRef(entry)
+  const voxelRef = useRef(voxel)
+  const onTapAddRef = useRef(onTapAdd)
+  entryRef.current = entry
+  voxelRef.current = voxel
+  onTapAddRef.current = onTapAdd
+
+  const clearHold = () => {
+    const h = holdRef.current
+    if (h?.timer != null) window.clearTimeout(h.timer)
+    holdRef.current = null
+    setHoldVisual(null)
+  }
+
+  useEffect(() => () => clearHold(), [])
+
+  useEffect(() => {
+    if (!enabled) return
+
+    const onMove = (event: PointerEvent) => {
+      const h = holdRef.current
+      if (!h || h.deleted || h.dragged || event.pointerId !== h.pointerId) return
+      const dx = event.clientX - h.startX
+      const dy = event.clientY - h.startY
+      if (dx * dx + dy * dy < DRAG_CANCEL_PX * DRAG_CANCEL_PX) return
+      h.dragged = true
+      if (h.timer != null) window.clearTimeout(h.timer)
+      h.timer = null
+      setHoldVisual(null)
+    }
+
+    const onUp = (event: PointerEvent) => {
+      const h = holdRef.current
+      if (!h || event.pointerId !== h.pointerId) return
+
+      const elapsed = performance.now() - h.startedAt
+      if (h.timer != null) window.clearTimeout(h.timer)
+
+      const active = entryRef.current
+      const activeVoxel = voxelRef.current
+      if (!h.deleted && !h.dragged && elapsed < TAP_MAX_MS && h.air) {
+        const dens = active.grid.densities
+        const idx = gridIndex(h.air.ix, h.air.iy, h.air.iz, active.grid.size)
+        if (!isSolid(dens[idx] ?? 0, activeVoxel.isolevel)) {
+          onTapAddRef.current(active.key, h.air.ix, h.air.iy, h.air.iz)
+        }
+      }
+
+      holdRef.current = null
+      setHoldVisual(null)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [enabled])
+
+  useFrame(() => {
+    const h = holdRef.current
+    const ghost = ghostRef.current
+    if (!h || !ghost || h.deleted || h.dragged) return
+    const t = Math.min(1, (performance.now() - h.startedAt) / HOLD_DELETE_MS)
+    ghost.scale.setScalar(Math.max(0.2, 1 - t * 0.55))
+    const mat = ghost.material as { opacity: number }
+    mat.opacity = 0.75 * (1 - t * 0.85)
+  })
+
+  const onPointerDown = (event: ThreeEvent<PointerEvent>) => {
+    if (!enabled || !event.face || event.nativeEvent.button !== 0) return
+    if (document.pointerLockElement) return
+
+    const normal = event.face.normal
+      .clone()
+      .transformDirection(event.object.matrixWorld)
+      .normalize()
+
+    const solid = hitToVoxelIndex(event.point, normal, entry.grid, true)
+    const air = hitToVoxelIndex(event.point, normal, entry.grid, false)
+    if (!solid) return
+
+    const startedAt = performance.now()
+    setHoldVisual({
+      center: cellWorldCenter(entry.grid, solid.ix, solid.iy, solid.iz),
+      cellSize: entry.grid.cellSize,
+      startedAt,
+    })
+
+    const timer = window.setTimeout(() => {
+      const cur = holdRef.current
+      if (!cur || cur.deleted || cur.dragged) return
+      cur.deleted = true
+      onHoldDelete(entry.key, cur.solid.ix, cur.solid.iy, cur.solid.iz)
+      holdRef.current = null
+      setHoldVisual(null)
+    }, HOLD_DELETE_MS)
+
+    holdRef.current = {
+      solid,
+      air,
+      startedAt,
+      timer,
+      deleted: false,
+      dragged: false,
+      pointerId: event.nativeEvent.pointerId,
+      startX: event.nativeEvent.clientX,
+      startY: event.nativeEvent.clientY,
+    }
+  }
+
+  return (
+    <>
+      <mesh
+        geometry={entry.geometry}
+        material={material}
+        frustumCulled={false}
+        onPointerDown={enabled ? onPointerDown : undefined}
+      />
+      {holdVisual ? (
+        <mesh
+          ref={ghostRef}
+          position={[holdVisual.center[0], holdVisual.center[1], holdVisual.center[2]]}
+          raycast={() => null}
+        >
+          <boxGeometry
+            args={[
+              holdVisual.cellSize * 0.95,
+              holdVisual.cellSize * 0.95,
+              holdVisual.cellSize * 0.95,
+            ]}
+          />
+          <meshBasicMaterial
+            color="#c8cdd4"
+            transparent
+            opacity={0.65}
+            depthWrite={false}
+            side={DoubleSide}
+          />
+        </mesh>
+      ) : null}
+    </>
+  )
+}
+
+function TownCloudChunks({
   terrain,
   voxel,
   gradient,
-  glitchIntensity,
+  grain,
+  editEnabled,
   onEntries,
 }: {
   terrain: TerrainParams
   voxel: VoxelParams
   gradient: GradientStop[]
-  glitchIntensity: number
+  grain: number
+  editEnabled: boolean
   onEntries: (entries: ChunkEntry[]) => void
 }) {
   const [entries, setEntries] = useState<ChunkEntry[]>([])
@@ -106,6 +333,8 @@ function GlitchTerrainChunks({
   const lastStreamAt = useRef(0)
   const lastCenterKey = useRef('')
   const materialRef = useRef<ShaderMaterial | null>(null)
+  const gradientRef = useRef(gradient)
+  gradientRef.current = gradient
 
   const densityAt = useMemo(
     () => createDensityFunction(terrain, voxel),
@@ -113,16 +342,16 @@ function GlitchTerrainChunks({
   )
 
   const material = useMemo(() => {
-    const mat = createStudyMaterial('glitch', { glitchIntensity, grayscale: true })
+    const mat = createEpMaterial({ grain })
     materialRef.current = mat
     return mat
   }, [])
 
   useEffect(() => {
-    if (material.uniforms.uGlitch) {
-      material.uniforms.uGlitch.value = glitchIntensity
+    if (material.uniforms.uGrain) {
+      material.uniforms.uGrain.value = grain
     }
-  }, [material, glitchIntensity])
+  }, [material, grain])
 
   useEffect(() => {
     return () => {
@@ -139,6 +368,31 @@ function GlitchTerrainChunks({
     setEntries([])
     onEntries([])
   }, [genKey, onEntries])
+
+  const editCell = (key: string, ix: number, iy: number, iz: number, mode: 'add' | 'remove') => {
+    const prev = entriesRef.current.get(key)
+    if (!prev) return
+    const nextDens = prev.grid.densities.slice()
+    const idx = gridIndex(ix, iy, iz, prev.grid.size)
+    if (mode === 'add') {
+      nextDens[idx] = Math.max(voxel.isolevel + 0.5, (nextDens[idx] ?? 0) + 1)
+    } else {
+      nextDens[idx] = Math.min(voxel.isolevel - 0.5, (nextDens[idx] ?? 0) - 1)
+    }
+    disposeEntry(prev)
+    const grid: VoxelGrid = { ...prev.grid, densities: nextDens }
+    const geometry = buildGreedyInteractiveMesh(
+      grid,
+      voxel.isolevel,
+      gradientRef.current,
+      densityAt,
+    )
+    const next: ChunkEntry = { ...prev, grid, geometry }
+    entriesRef.current.set(key, next)
+    const list = Array.from(entriesRef.current.values())
+    setEntries(list)
+    onEntries(list)
+  }
 
   useFrame(({ camera, clock }) => {
     if (materialRef.current?.uniforms.uTime) {
@@ -204,47 +458,45 @@ function GlitchTerrainChunks({
   return (
     <>
       {entries.map((entry) => (
-        <mesh
+        <EpEditMesh
           key={entry.key}
-          geometry={entry.geometry}
+          entry={entry}
           material={material}
-          frustumCulled={false}
+          voxel={voxel}
+          enabled={editEnabled}
+          onTapAdd={(key, ix, iy, iz) => editCell(key, ix, iy, iz, 'add')}
+          onHoldDelete={(key, ix, iy, iz) => editCell(key, ix, iy, iz, 'remove')}
         />
       ))}
     </>
   )
 }
 
-type NeonMark = { x: number; y: number; z: number; color: string; s: number }
 type Peak = { x: number; y: number; z: number }
 
-function CyberDecor({
+/** Voxel Cloud filigree scaffold spans only — no colored accent blocks. */
+function TownScaffoldDecor({
   entries,
   terrain,
-  neonDensity,
   isolevel,
 }: {
   entries: ChunkEntry[]
   terrain: TerrainParams
-  neonDensity: number
   isolevel: number
 }) {
   const sample = useMemo(() => createNoise(terrain), [terrain])
   const heightScale = terrainAmplitude(terrain)
+  const density = EP_SCAFFOLD_DENSITY
 
-  const { neons, cablePositions } = useMemo(() => {
-    const marks: NeonMark[] = []
+  const scaffoldPositions = useMemo(() => {
     const peaks: Peak[] = []
-    const density = Math.max(0, Math.min(1, neonDensity))
 
     for (const entry of entries) {
       const { grid, coord } = entry
       const { size, densities, cellSize, origin } = grid
-      // Sample a sparse subset of cells for neon signs
       const stride = Math.max(1, Math.round(size / (2 + density * 6)))
       for (let iz = 0; iz < size; iz += stride) {
         for (let ix = 0; ix < size; ix += stride) {
-          // Find highest solid in column
           let top = -1
           for (let iy = size - 1; iy >= 0; iy--) {
             if (isSolid(densities[gridIndex(ix, iy, iz, size)] ?? 0, isolevel)) {
@@ -257,29 +509,18 @@ function CyberDecor({
           const wy = origin[1] + (top + 0.5) * cellSize
           const wz = origin[2] + (iz + 0.5) * cellSize
           const surface = sample(wx, wz) * heightScale
-          // Prefer near-surface tops
           if (Math.abs(wy - surface) > cellSize * 2.5) continue
 
           const h = hash2(coord.cx * size + ix, coord.cz * size + iz, 1)
-          if (h < density * 0.55) {
-            marks.push({
-              x: wx,
-              y: wy + cellSize * 0.35,
-              z: wz,
-              color: NEON_COLORS[Math.floor(hash2(ix, iz, 2) * NEON_COLORS.length)]!,
-              s: cellSize * (0.35 + hash2(ix, iz, 3) * 0.45),
-            })
-          }
-          if (h > 0.72 && wy > surface * 0.2) {
+          if (h > 0.62 && wy > surface * 0.15) {
             peaks.push({ x: wx, y: wy + cellSize * 0.5, z: wz })
           }
         }
       }
     }
 
-    // Vertical glowing cables between nearby tall peaks
-    const cableVerts: number[] = []
-    const maxDist = 3.2
+    const verts: number[] = []
+    const maxDist = 3.6
     for (let i = 0; i < peaks.length; i++) {
       const a = peaks[i]!
       let best: Peak | null = null
@@ -287,36 +528,38 @@ function CyberDecor({
       for (let j = i + 1; j < peaks.length; j++) {
         const b = peaks[j]!
         const d = Math.hypot(a.x - b.x, a.z - b.z)
-        if (d < bestD && d > 0.4) {
+        if (d < bestD && d > 0.45) {
           bestD = d
           best = b
         }
       }
       if (!best) continue
-      // Thin vertical runs up from each peak then a span — reads as cable/utility lines
-      const midY = Math.max(a.y, best.y) + 0.55 + hash2(i, 0, 9) * 0.4
-      cableVerts.push(a.x, a.y, a.z, a.x, midY, a.z)
-      cableVerts.push(a.x, midY, a.z, best.x, midY, best.z)
-      cableVerts.push(best.x, midY, best.z, best.x, best.y, best.z)
+      const midY = Math.max(a.y, best.y) + 0.35 + hash2(i, 0, 9) * 0.55
+      verts.push(a.x, a.y, a.z, a.x, midY, a.z)
+      verts.push(a.x, midY, a.z, best.x, midY, best.z)
+      verts.push(best.x, midY, best.z, best.x, best.y, best.z)
+      if (hash2(i, 1, 11) > 0.45) {
+        verts.push(a.x, a.y + 0.15, a.z, best.x, midY, best.z)
+      }
     }
 
-    return { neons: marks, cablePositions: cableVerts }
-  }, [entries, neonDensity, isolevel, sample, heightScale])
+    return verts
+  }, [entries, isolevel, sample, heightScale, density])
 
-  const cableGeo = useMemo(() => {
+  const scaffoldGeo = useMemo(() => {
     const geo = new BufferGeometry()
-    if (cablePositions.length > 0) {
-      geo.setAttribute('position', new Float32BufferAttribute(cablePositions, 3))
+    if (scaffoldPositions.length > 0) {
+      geo.setAttribute('position', new Float32BufferAttribute(scaffoldPositions, 3))
     }
     return geo
-  }, [cablePositions])
+  }, [scaffoldPositions])
 
-  const cableMat = useMemo(
+  const scaffoldMat = useMemo(
     () =>
       new LineBasicMaterial({
-        color: '#cfcfcf',
+        color: '#5a616c',
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.4,
         depthWrite: false,
       }),
     [],
@@ -324,47 +567,13 @@ function CyberDecor({
 
   useEffect(() => {
     return () => {
-      cableGeo.dispose()
-      cableMat.dispose()
+      scaffoldGeo.dispose()
+      scaffoldMat.dispose()
     }
-  }, [cableGeo, cableMat])
+  }, [scaffoldGeo, scaffoldMat])
 
-  const neonMatCache = useMemo(() => {
-    const map = new Map<string, MeshBasicMaterial>()
-    for (const c of NEON_COLORS) {
-      map.set(
-        c,
-        new MeshBasicMaterial({
-          color: c,
-          toneMapped: false,
-        }),
-      )
-    }
-    return map
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      for (const m of neonMatCache.values()) m.dispose()
-    }
-  }, [neonMatCache])
-
-  return (
-    <>
-      {neons.map((n, i) => (
-        <mesh
-          key={`neon-${i}`}
-          position={[n.x, n.y, n.z]}
-          material={neonMatCache.get(n.color)}
-        >
-          <boxGeometry args={[n.s, n.s * 0.55, n.s * 0.35]} />
-        </mesh>
-      ))}
-      {cablePositions.length > 0 ? (
-        <lineSegments geometry={cableGeo} material={cableMat} />
-      ) : null}
-    </>
-  )
+  if (scaffoldPositions.length === 0) return null
+  return <lineSegments geometry={scaffoldGeo} material={scaffoldMat} raycast={() => null} />
 }
 
 export default function ExperientialScene({
@@ -383,26 +592,28 @@ export default function ExperientialScene({
   return (
     <Canvas
       className="scene-canvas"
-      camera={{ position: [4.5, 2.6, 4.5], fov: 50, near: 0.05, far: 200 }}
+      camera={{ position: [5.2, 3.4, 5.8], fov: 48, near: 0.05, far: 220 }}
       dpr={[1, 2]}
       gl={{ antialias: true }}
     >
-      <color attach="background" args={[EP_FOG_COLOR]} />
+      <color attach="background" args={[EP_SKY_COLOR]} />
       <FogController density={ep.fogDensity} color={EP_FOG_COLOR} />
-      <ambientLight intensity={0.28} />
-      <directionalLight position={[4, 7, 2]} intensity={0.65} color="#d0d0d0" />
-      <pointLight position={[2, 3, 2]} intensity={0.55} color="#f5f5f5" distance={12} />
-      <GlitchTerrainChunks
+      <ambientLight intensity={0.22} color="#9aa1ab" />
+      <hemisphereLight args={['#2a3038', '#121418', 0.35]} />
+      <directionalLight position={[6, 10, 3]} intensity={0.55} color="#d0d4da" />
+      <directionalLight position={[-4, 3, -5]} intensity={0.12} color="#6a7380" />
+      <SoftWater />
+      <TownCloudChunks
         terrain={terrain}
         voxel={voxel}
         gradient={EP_MESH_GRADIENT}
-        glitchIntensity={ep.glitchIntensity}
+        grain={ep.glitchIntensity}
+        editEnabled={!firstPerson}
         onEntries={onEntries}
       />
-      <CyberDecor
+      <TownScaffoldDecor
         entries={entries}
         terrain={terrain}
-        neonDensity={ep.neonDensity}
         isolevel={voxel.isolevel}
       />
       <OrbitControls

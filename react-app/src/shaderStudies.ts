@@ -252,3 +252,54 @@ export function createStudyMaterial(
     // Don't set vertexColors — custom attribute handling only
   })
 }
+
+/**
+ * Experiential Playground material: dark Townscaper masses + soft stepped light,
+ * with Voxel Cloud–like porous filigree grain (uGrain).
+ */
+const EP_VERT = TOON_VERT
+
+const EP_FRAG = /* glsl */ `
+${COMMON_FRAG_HEAD}
+uniform float uGrain;
+void main() {
+  vec3 plaster = heightBase();
+  if (length(vColor) > 0.01) plaster = mix(plaster, vColor, 0.82);
+
+  vec3 n = safeNormal(vNormal);
+  float ndl = max(dot(n, normalize(uLightDir)), 0.0);
+  float stepped = ndl > 0.72 ? 1.0 : ndl > 0.4 ? 0.68 : ndl > 0.18 ? 0.42 : 0.22;
+  vec3 lit = plaster * (0.28 + 0.72 * stepped);
+
+  // Cool dim sky bounce on upward faces
+  lit += vec3(0.06, 0.07, 0.09) * max(n.y, 0.0) * 0.4;
+
+  // Voxel Cloud filigree: porous density dither in shadowed / mid bands
+  float gAmt = clamp(uGrain, 0.0, 2.0);
+  float pore = hash(floor(vWorldPos * 6.5).xz + floor(vWorldPos.y * 4.0));
+  float fibrous = smoothstep(0.35, 0.85, pore) * (1.0 - ndl);
+  lit *= 1.0 - fibrous * 0.35 * gAmt;
+
+  // Dark height haze — vague deep tectonics
+  float haze = smoothstep(-0.4, 2.8, vWorldPos.y);
+  lit = mix(vec3(0.08, 0.09, 0.11), lit, 0.45 + 0.55 * haze);
+
+  gl_FragColor = vec4(clamp(lit, 0.0, 1.0), 1.0);
+}
+`
+
+export function createEpMaterial(options?: { grain?: number }): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uLightDir: { value: new Vector3(0.45, 0.9, 0.3).normalize() },
+      uColorLow: { value: new Color('#1a1c20') },
+      uColorHigh: { value: new Color('#9aa1ab') },
+      uGrain: { value: options?.grain ?? 0.65 },
+    },
+    vertexShader: EP_VERT,
+    fragmentShader: EP_FRAG,
+    side: DoubleSide,
+    toneMapped: false,
+  })
+}

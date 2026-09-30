@@ -21,7 +21,7 @@ Noise params also drive voxel / shader / EP heightfields (same `createNoise` / `
 | Control | What it does | Visual effect |
 |---|---|---|
 | **3D / 2D / Voxels / Shaders** | Sets `ViewMode` — which main canvas is mounted. | Switches between heightfield, 2D noise/sim, infinite voxels, and shader studies. |
-| **Experiential Playground \| EP** | Full-width tab under the four above (`mode === 'ep'`). | Grayscale playground: streamed voxels + gray Glitch shader + fog + bright signs + cables + Jump In. |
+| **Experiential Playground \| EP** | Full-width tab under the four above (`mode === 'ep'`). | Dark Townscaper-like islands + Voxel Cloud mist/filigree scaffold; Jump In. |
 | **Field / Sim** (2D only) | Sets `TwoDTab`. | **Field** = raw noise + Noise/Field/Raw 2D. **Sim** = erosion heightmap + Hydraulic/Droplet/Sediment/Map. |
 
 ---
@@ -149,21 +149,31 @@ Same shared `heightGradient` / `GradientEditor` as Voxels. Paints Interactive st
 
 ## Experiential Playground (EP)
 
-Full-width tab. Assembles streamed Interactive voxels + grayscale Glitch material + fog + bright signs + cables + Jump In (`ExperientialScene`, `EpParams`). Minimal panel — no full Noise/Field duplicate. Uses `EP_GRAY_GRADIENT` / gray lights (does not follow the shared Height gradient colors).
+Full-width tab. Combines **Townscaper** (Oskar Stålberg) block masses over water with **Voxel Cloud** (Julian Edelmann) dark mist, porous filigree grain, and airy scaffold links (`ExperientialScene`, `EpParams`, `createEpMaterial`). Dark charcoal palette — no colored accent towers. Minimal panel. Uses `EP_TOWN_GRADIENT` (not the shared Height gradient).
 
 ### Atmosphere
 
 | Control | Range (UI) | What it does | Visual effect |
 |---|---|---|---|
-| **Fog density** | 0–0.15 | `FogExp2` density; color `EP_FOG_COLOR` (`#1a1a1a`). | Higher → thicker charcoal fade into the distance. |
-| **Glitch intensity** | 0–2 | Uniform `uGlitch` on the grayscale Glitch `ShaderMaterial`. | Stronger scanlines and luminance noise bursts (no chromatic color). |
-| **Neon density** | 0–1 | Chance of scattering bright gray “sign” boxes on surface cells; also feeds peak picks for cables. | Higher → more bright voxels and more light-gray cable spans between tall spots. |
+| **Fog density** | 0–0.15 | `FogExp2` density; color `EP_FOG_COLOR` (`#14161a`). | Higher → thicker dark mist (Voxel Cloud depth). |
+| **Filigree** | 0–2 | Uniform `uGrain` on the EP soft-town shader (`glitchIntensity` in code). | Stronger porous/fibrous surface dither — solid ↔ airy transitions. |
+
+Scaffold links use fixed `EP_SCAFFOLD_DENSITY` (no colored accents).
+
+### Build (mouse)
+
+| Gesture | What it does | Visual effect |
+|---|---|---|
+| **Click** (left, short) | Adds a voxel in the empty cell adjacent to the hit face. | Townscaper-style grow; remeshes that chunk. |
+| **Hold** (~400ms) | Removes the solid voxel under the cursor; pale ghost scales/fades while holding. | Carve / erase; drag past a few px cancels so orbit still works. |
+
+Editing is off while Jump In (pointer lock) is active.
 
 ### Walk
 
 | Control | What it does | Visual effect |
 |---|---|---|
-| **Jump In** / **Exit** | Same `FirstPersonControls` as Voxels (shared `firstPerson` state for `voxels` and `ep`). | Walk the grayscale field; Esc / Exit returns to orbit. |
+| **Jump In** / **Exit** | Same `FirstPersonControls` as Voxels (shared `firstPerson` state for `voxels` and `ep`). | Walk the pastel islands; Esc / Exit returns to orbit. |
 
 ---
 
