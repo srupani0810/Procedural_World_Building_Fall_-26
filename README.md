@@ -16,8 +16,6 @@
 
 ## Progress by class
 
-Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`docs/progress/class-0X/`](./docs/progress/). After you add an image, remove the `<!--` / `-->` around that class’s `![…](…)` line.
-
 ### Class 01 — Intro
 
 **Deck:** [PWB — Class 01](https://www.figma.com/deck/POK6565upmCTz79sU6Q2ns/PWB---Class-01)
