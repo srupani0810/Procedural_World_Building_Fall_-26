@@ -10,6 +10,8 @@ import NoiseMap from './NoiseMap.tsx'
 import { Slider } from './Slider.tsx'
 import { VOXEL_RENDER_OPTIONS, defaultVoxelParams } from './voxelParams.ts'
 import type { VoxelParams, VoxelRenderMode } from './voxelParams.ts'
+import { SHADER_STUDIES, getShaderStudy } from './shaderStudies.ts'
+import type { ShaderStudyId } from './shaderStudies.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -28,6 +30,10 @@ type AppChromeProps = {
   onVoxelChange: (patch: Partial<VoxelParams>) => void
   onHeightGradientChange: (stops: GradientStop[]) => void
   onErosion: (patch: Partial<ErosionParams>) => void
+  shaderStudy: ShaderStudyId
+  onShaderStudy: (study: ShaderStudyId) => void
+  shaderMeshMode: VoxelRenderMode
+  onShaderMeshMode: (mode: VoxelRenderMode) => void
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -53,6 +59,10 @@ export default function AppChrome({
   onVoxelChange,
   onHeightGradientChange,
   onErosion,
+  shaderStudy,
+  onShaderStudy,
+  shaderMeshMode,
+  onShaderMeshMode,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -64,8 +74,12 @@ export default function AppChrome({
   const extra = params.extras[params.noiseId]
   const showSim = mode === '2d' && twoDTab === 'sim'
   const showVoxels = mode === 'voxels'
+  const showShaders = mode === 'shaders'
+  const study = getShaderStudy(shaderStudy)
   const renderLabel =
     VOXEL_RENDER_OPTIONS.find((item) => item.id === voxelParams.renderMode)?.label ?? '—'
+  const shaderMeshLabel =
+    VOXEL_RENDER_OPTIONS.find((item) => item.id === shaderMeshMode)?.label ?? '—'
 
   return (
     <div className="chrome">
@@ -76,10 +90,10 @@ export default function AppChrome({
 
       <aside className="chrome-panel" aria-label="Parameters">
         <div className="chrome-panel-header">
-          <h2>{showVoxels ? 'Voxels' : 'Terrain'}</h2>
+          <h2>{showVoxels ? 'Voxels' : showShaders ? 'Shaders' : 'Terrain'}</h2>
         </div>
 
-        <div className="chrome-modes chrome-modes-3" role="tablist" aria-label="View">
+        <div className="chrome-modes chrome-modes-4" role="tablist" aria-label="View">
           <button
             type="button"
             role="tab"
@@ -107,6 +121,15 @@ export default function AppChrome({
           >
             Voxels
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'shaders'}
+            className={mode === 'shaders' ? 'is-active' : undefined}
+            onClick={() => onMode('shaders')}
+          >
+            Shaders
+          </button>
         </div>
 
         {mode === '2d' ? (
@@ -130,6 +153,108 @@ export default function AppChrome({
               Sim
             </button>
           </div>
+        ) : null}
+
+        {showShaders ? (
+          <>
+            <ChromeSection
+              title="Shader study"
+              tip="Swap live ShaderMaterial studies on the same voxel-derived terrain mesh."
+              defaultOpen
+            >
+              <p className="chrome-hint">
+                Shader materials on a voxel-derived study mesh. Isolated from Voxels edit /
+                chunk streaming.
+              </p>
+              <label className="chrome-field">
+                <span className="chrome-slider-row">
+                  <span>Study</span>
+                  <span className="chrome-slider-value">{study.label}</span>
+                </span>
+                <select
+                  value={shaderStudy}
+                  onChange={(event) => onShaderStudy(event.target.value as ShaderStudyId)}
+                >
+                  {SHADER_STUDIES.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="chrome-hint chrome-hint-study">{study.description}</p>
+            </ChromeSection>
+
+            <ChromeSection
+              title="Meshing"
+              tip="Choose Marching Cubes or Interactive geometry for the shader study (Shaders tab only)."
+            >
+              <label className="chrome-field">
+                <span className="chrome-slider-row">
+                  <span>Mode</span>
+                  <span className="chrome-slider-value">{shaderMeshLabel}</span>
+                </span>
+                <select
+                  value={shaderMeshMode}
+                  onChange={(event) =>
+                    onShaderMeshMode(event.target.value as VoxelRenderMode)
+                  }
+                >
+                  {VOXEL_RENDER_OPTIONS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="chrome-hint">
+                Reuses the same meshing builders as Voxels. Does not change the Voxels tab
+                mode.
+              </p>
+            </ChromeSection>
+
+            <ChromeSection
+              title="Study mesh"
+              tip="Resolution, isolevel, volume, and bleed for the shader study chunk (reuses voxel builders)."
+            >
+              <Slider
+                label="Resolution"
+                value={voxelParams.resolution}
+                min={4}
+                max={64}
+                step={1}
+                display={`${Math.round(voxelParams.resolution)}³`}
+                onChange={(resolution) => onVoxelChange({ resolution })}
+              />
+              <Slider
+                label="Isolevel"
+                value={voxelParams.isolevel}
+                min={-2}
+                max={2}
+                step={0.01}
+                display={voxelParams.isolevel.toFixed(2)}
+                onChange={(isolevel) => onVoxelChange({ isolevel })}
+              />
+              <Slider
+                label="Volume"
+                value={voxelParams.volume}
+                min={0}
+                max={2}
+                step={0.01}
+                display={voxelParams.volume.toFixed(2)}
+                onChange={(volume) => onVoxelChange({ volume })}
+              />
+              <Slider
+                label="Bleed"
+                value={voxelParams.bleed}
+                min={0}
+                max={1}
+                step={0.01}
+                display={voxelParams.bleed.toFixed(2)}
+                onChange={(bleed) => onVoxelChange({ bleed })}
+              />
+            </ChromeSection>
+          </>
         ) : null}
 
         {showVoxels ? (

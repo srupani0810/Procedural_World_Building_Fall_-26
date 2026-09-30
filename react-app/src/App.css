@@ -101,8 +101,41 @@
   background: var(--void);
 }
 
+.chrome-modes-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
 .chrome-modes-3 {
   grid-template-columns: 1fr 1fr 1fr;
+}
+
+.chrome-modes-4 {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
+.chrome-modes-4 button {
+  letter-spacing: 0.06em;
+  font-size: 8px;
+}
+
+.chrome-modes-2 {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.chrome-modes-2 button {
+  letter-spacing: 0.04em;
+  font-size: 8px;
+  text-transform: none;
+  height: 28px;
+  padding: 0 4px;
+  line-height: 1.15;
+}
+
+.chrome-hint-study {
+  margin-top: 4px;
+  margin-bottom: 10px;
+  color: var(--text-dim);
 }
 
 .chrome-modes button {

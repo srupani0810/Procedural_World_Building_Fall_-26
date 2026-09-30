@@ -4,6 +4,7 @@ import HeightMapView from './HeightMapView.tsx'
 import NoiseMap from './NoiseMap.tsx'
 import Scene from './Scene.tsx'
 import VoxelScene from './VoxelScene.tsx'
+import ShaderScene from './ShaderScene.tsx'
 import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion.ts'
 import type { ErosionParams } from './erosion.ts'
 import { defaultTerrainParams } from './terrainParams.ts'
@@ -11,7 +12,8 @@ import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import { defaultHeightGradient } from './heightGradient.ts'
 import type { GradientStop } from './heightGradient.ts'
 import { defaultVoxelParams } from './voxelParams.ts'
-import type { VoxelParams } from './voxelParams.ts'
+import type { VoxelParams, VoxelRenderMode } from './voxelParams.ts'
+import type { ShaderStudyId } from './shaderStudies.ts'
 import './App.css'
 
 function App() {
@@ -19,6 +21,9 @@ function App() {
   const [twoDTab, setTwoDTab] = useState<TwoDTab>('field')
   const [params, setParams] = useState<TerrainParams>(defaultTerrainParams)
   const [voxelParams, setVoxelParams] = useState<VoxelParams>(defaultVoxelParams)
+  const [shaderStudy, setShaderStudy] = useState<ShaderStudyId>('displace')
+  /** Shaders-tab meshing only — does not change Voxels `voxelParams.renderMode`. */
+  const [shaderMeshMode, setShaderMeshMode] = useState<VoxelRenderMode>('marching')
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -76,6 +81,14 @@ function App() {
             firstPerson={firstPerson}
             onExitFirstPerson={() => setFirstPerson(false)}
           />
+        ) : mode === 'shaders' ? (
+          <ShaderScene
+            terrain={params}
+            voxel={voxelParams}
+            study={shaderStudy}
+            meshMode={shaderMeshMode}
+            gradient={heightGradient}
+          />
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -107,6 +120,10 @@ function App() {
         onVoxelChange={(patch) => setVoxelParams((current) => ({ ...current, ...patch }))}
         onHeightGradientChange={setHeightGradient}
         onErosion={(patch) => setErosion((current) => ({ ...current, ...patch }))}
+        shaderStudy={shaderStudy}
+        onShaderStudy={setShaderStudy}
+        shaderMeshMode={shaderMeshMode}
+        onShaderMeshMode={setShaderMeshMode}
         firstPerson={firstPerson}
         onJumpIn={() => setFirstPerson(true)}
         onExitFirstPerson={() => setFirstPerson(false)}
