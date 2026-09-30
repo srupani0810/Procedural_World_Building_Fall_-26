@@ -22,7 +22,7 @@ Interactive **React + Three.js** terrain playground for Cornell **DESIGN 6197**.
 
 Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`docs/progress/class-0X/`](./docs/progress/). After you add an image, remove the `<!--` / `-->` around that class’s `![…](…)` line.
 
-### Class 01 — Intro, Microscope & Git
+### Class 01 — Intro
 
 **Deck:** [PWB — Class 01](https://www.figma.com/deck/POK6565upmCTz79sU6Q2ns/PWB---Class-01)
 
@@ -42,7 +42,7 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 
 <!-- ![Class 02](docs/progress/class-02/screenshot.png) -->
 
-### Class 03 — Assignment 1: noise field
+### Class 03 — Noise Field + Simulations
 
 **Deck:** [PWB — Class 03](https://www.figma.com/deck/Hc8vcT9xVjjd1p3sT5xKgQ/PWB---Class-03)
 
@@ -50,9 +50,12 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 
 **App progress:** **3D / 2D** tabs with FastNoiseLite heightfield; hydraulic erosion sim on the 2D map; blue→red height coloring on the solid 3D mesh; grayscale heightmap preview.
 
-<!-- ![Class 03](docs/progress/class-03/screenshot.png) -->
+<!-- ![Class 03](docs/progress/class-03/screenshot.png) --> <img width="1497" height="850" alt="Screenshot 2026-09-09 at 12 25 22 PM" src="https://github.com/user-attachments/assets/a89b6f06-9762-4bfe-93f5-f4ff46b8d8a2" />
 
-### Class 04 — Voxels & terraforming
+<img width="1497" height="850" alt="Screenshot 2026-09-09 at 2 02 49 PM" src="https://github.com/user-attachments/assets/85570165-ecfe-4642-adf2-deece3f1e7c0" />
+
+
+### Class 04 — Voxels
 
 **Deck:** [PWB — Class 04](https://www.figma.com/deck/nGInnCOpuzyqmq9z8mFUod/PWB---Class-04)
 
@@ -62,7 +65,7 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 
 <!-- ![Class 04](docs/progress/class-04/screenshot.png) -->
 
-### Class 05 — Assignment 2: shaders
+### Class 05 — Shaders
 
 **Deck:** [PWB — Class 05](https://www.figma.com/deck/XP1cVSq9wjUzFZuUn0ury1/PWB---Class-05)
 
