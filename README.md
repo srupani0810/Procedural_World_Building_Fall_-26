@@ -1,28 +1,22 @@
 # Procedural World Building — Fall ’26
 
-Interactive **React + Three.js** terrain playground for Cornell **DESIGN 6197**. Explore shared noise fields in 3D and 2D, run a hydraulic erosion sim, and walk an infinite voxel world with Marching Cubes or blocky Interactive meshing.
-
 ## Contents
 
 - [Progress by class](#progress-by-class)
-  - [Class 01 — Intro, Microscope & Git](#class-01--intro-microscope--git)
+  - [Class 01 — Intro](#class-01--intro-microscope--git)
   - [Class 02 — Web tools: React + Three.js](#class-02--web-tools-react--threejs)
-  - [Class 03 — Assignment 1: noise field](#class-03--assignment-1-noise-field)
-  - [Class 04 — Voxels & terraforming](#class-04--voxels--terraforming)
-  - [Class 05 — Assignment 2: shaders](#class-05--assignment-2-shaders)
-- [Features](#features)
+  - [Class 03 — Noise Field + Simulations](#class-03--assignment-1-noise-field)
+  - [Class 04 — Voxels](#class-04--voxels--terraforming)
+  - [Class 05 — Shaders](#class-05--assignment-2-shaders)
 - [Requirements](#requirements)
 - [Getting started](#getting-started)
-- [Usage](#usage)
 - [Project structure](#project-structure)
 - [Built with](#built-with)
 - [Author](#author)
 
 ## Progress by class
 
-Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`docs/progress/class-0X/`](./docs/progress/). After you add an image, remove the `<!--` / `-->` around that class’s `![…](…)` line.
-
-### Class 01 — Intro, Microscope & Git
+### Class 01 — Intro
 
 **Deck:** [PWB — Class 01](https://www.figma.com/deck/POK6565upmCTz79sU6Q2ns/PWB---Class-01)
 
@@ -38,37 +32,47 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 
 **Class topics:** Traditional web stack (HTML / CSS / JS); tools — **React + Three.js** app shell.
 
-**App progress:** Vite + React canvas with orbit camera; center object (cube → blob → Halloween); live sliders; style-guide UI pass.
+**App progress:** React canvas with orbit camera; center object; live sliders; style-guide UI pass.
 
 <!-- ![Class 02](docs/progress/class-02/screenshot.png) -->
 
-### Class 03 — Assignment 1: noise field
+### Class 03 — Noise Field + Simulations
 
 **Deck:** [PWB — Class 03](https://www.figma.com/deck/Hc8vcT9xVjjd1p3sT5xKgQ/PWB---Class-03)
 
 **Class topics / Assignment 1:** 3D grid in the viewport; 2D view of a noise equation; apply noise to the 3D grid; slider controls for noise + grid resolution; shaping ops via dropdown (+ own sliders). Extensions: layered noise, noise-type menu, blending.
 
-**App progress:** **3D / 2D** tabs with FastNoiseLite heightfield; hydraulic erosion sim on the 2D map; blue→red height coloring on the solid 3D mesh; grayscale heightmap preview.
+**App progress:** 3D / 2D tabs; heightfield; hydraulic erosion sim on the 2D map; blue→red height coloring on the solid 3D mesh; grayscale heightmap preview.
 
-<!-- ![Class 03](docs/progress/class-03/screenshot.png) -->
+<!-- ![Class 03](docs/progress/class-03/screenshot.png) --> 
 
-### Class 04 — Voxels & terraforming
+<img width="1497" height="850" alt="Screenshot 2026-09-09 at 12 25 22 PM" src="https://github.com/user-attachments/assets/a89b6f06-9762-4bfe-93f5-f4ff46b8d8a2" />
+
+<img width="1497" height="850" alt="Screenshot 2026-09-09 at 2 02 49 PM" src="https://github.com/user-attachments/assets/85570165-ecfe-4642-adf2-deece3f1e7c0" />
+
+
+### Class 04 — Voxels
 
 **Deck:** [PWB — Class 04](https://www.figma.com/deck/nGInnCOpuzyqmq9z8mFUod/PWB---Class-04)
 
-**Class topics:** Geographic data, **voxels**, and terraforming (incl. Sebastian Lague–style references).
+**Class topics:** Geographic data, voxels, and terraforming.
 
-**App progress:** **Voxels** tab from the shared 3D field; real `density(x,y,z)` grid → **Marching Cubes** / **Interactive** (greedy mesh, gradient editor, click edit); infinite chunk streaming; dark/red accordion UI + tooltips.
+**App progress:** Voxels tab from the shared 3D field; grid → Marching Cubes / Interactive drop down; UI graphic changes; tooltips; gradient mapping.
 
 <!-- ![Class 04](docs/progress/class-04/screenshot.png) -->
 
-### Class 05 — Assignment 2: shaders
+<img width="1503" height="852" alt="Screenshot 2026-09-29 at 8 06 59 PM" src="https://github.com/user-attachments/assets/7cb1f053-14a6-472b-9ab6-770eed933347" />
+
+<img width="1503" height="852" alt="Screenshot 2026-09-29 at 8 52 39 PM" src="https://github.com/user-attachments/assets/a91584cc-ea52-427b-b2a9-fd6b3bf656db" />
+
+
+### Class 05 — Shaders
 
 **Deck:** [PWB — Class 05](https://www.figma.com/deck/XP1cVSq9wjUzFZuUn0ury1/PWB---Class-05)
 
 **Class topics / Assignment 2:** Shader studies; show what shaders can do for simulations; choose strategies and why; dedicated in-app section to swap shader approaches.
 
-**App progress:** Shader notes in [`Tutorials/Shaders.md`](./Tutorials/Shaders.md); in-app shader swapper still to land — drop study screenshots here as you build them.
+**App progress:** Shader Studies; GLSL; technical implementation.
 
 <!-- ![Class 05](docs/progress/class-05/screenshot.png) -->
 
@@ -86,16 +90,6 @@ Organized to match Jose Sanchez’s **PWB** class decks. Screenshots go in [`doc
 4. For the next class deck: add `docs/progress/class-06/`, a TOC link, and a matching `### Class 06 — …` section (with the Figma deck URL).
 
 </details>
-
-## Features
-
-- **3D view** — rotatable heightfield mesh driven by FastNoiseLite (simplex and related types)
-- **2D view** — raw noise preview plus a hydraulic erosion simulation with start / stop / reset and parameter sliders
-- **Voxels view** — world-space density grid streamed in chunks around the camera
-  - **Interactive** — face-culled greedy mesh, custom height gradient colors, click to remove / shift-click to add
-  - **Marching Cubes** — smooth isosurface from the same density field
-- Shared **Noise** and **Field** controls (zoom, height, layers, grid detail) across views
-- Dark / red control panel with collapsible sections and chevron tooltips
 
 ## Requirements
 
@@ -126,15 +120,6 @@ Other scripts:
 npm run build    # production build → react-app/dist
 npm run preview  # preview the production build
 ```
-
-## Usage
-
-1. Use the **3D / 2D / Voxels** tabs at the top of the panel to switch views.
-2. Orbit the 3D / voxel scene with the mouse (drag to rotate, scroll to zoom).
-3. Open accordion sections (**Noise**, **Field**, **Voxel world**, **Meshing**, etc.) to tweak parameters.
-4. Hover a section’s expand/collapse arrow for a short tip on what that group controls.
-5. In **Voxels → Interactive**, click a face to remove a voxel; **shift-click** to add one next to the clicked face.
-6. In **2D**, open the erosion controls to start / stop / reset the simulation and adjust droplet & sediment parameters.
 
 ## Project structure
 
@@ -169,10 +154,10 @@ Class notes: [Tutorials](./Tutorials/) · planning: [Planning](./Planning/) · a
 ## Built with
 
 - [React](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vite.dev/)
 - [Three.js](https://threejs.org/) via [React Three Fiber](https://r3f.docs.pmnd.rs/) + [drei](https://github.com/pmndrs/drei)
-- [FastNoiseLite](https://github.com/Auburn/FastNoiseLite)
+
 
 ## Author
 
+**Sarah Rupani**
 Course project for **DESIGN 6197 — Procedural World Building**, Cornell University, Fall 2026.
