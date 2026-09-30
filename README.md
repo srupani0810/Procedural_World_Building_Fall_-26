@@ -65,6 +65,9 @@
 
 <img width="1503" height="852" alt="Screenshot 2026-09-29 at 8 52 39 PM" src="https://github.com/user-attachments/assets/a91584cc-ea52-427b-b2a9-fd6b3bf656db" />
 
+<img width="1509" height="852" alt="Screenshot 2026-09-30 at 8 34 40 AM" src="https://github.com/user-attachments/assets/e5d25818-1c76-4c8a-8df4-dd312fc8f0a2" />
+
+
 
 ### Class 05 — Shaders
 
