@@ -1,6 +1,13 @@
 import { OrbitControls } from '@react-three/drei'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react'
 import {
   BufferGeometry,
   Color,
@@ -9,6 +16,7 @@ import {
   FogExp2,
   LineBasicMaterial,
   MeshLambertMaterial,
+  PlaneGeometry,
   type Mesh,
   type ShaderMaterial,
 } from 'three'
@@ -21,26 +29,25 @@ import {
   EP_TOWN_GRADIENT,
   EP_WATER_COLOR,
 } from './epParams.ts'
+import { createEpMaterial } from './epMaterial.ts'
 import type { GradientStop } from './heightGradient.ts'
-import { createEpMaterial } from './shaderStudies.ts'
 import { createNoise, terrainAmplitude, type TerrainParams } from './terrainParams.ts'
 import { buildGreedyInteractiveMesh, hitToVoxelIndex } from './voxelGreedyMesh.ts'
 import {
-  buildVoxelChunk,
   chunkKey,
+  chunkOrigin,
   chunksAround,
-  createDensityFunction,
   gridIndex,
   isSolid,
   worldToChunk,
 } from './voxelGrid.ts'
 import type { ChunkCoord, VoxelGrid } from './voxelGrid.ts'
+import { VOXEL_CHUNK_SIZE } from './voxelParams.ts'
 import type { VoxelParams } from './voxelParams.ts'
 
 type Props = {
   terrain: TerrainParams
   voxel: VoxelParams
-  gradient: GradientStop[]
   ep: EpParams
   firstPerson: boolean
   onExitFirstPerson: () => void
@@ -57,6 +64,8 @@ const STREAM_INTERVAL_MS = 120
 const HOLD_DELETE_MS = 400
 const TAP_MAX_MS = 220
 const DRAG_CANCEL_PX = 6
+/** World extent of the noise-shaped ground plane (voxels stream around the camera on top). */
+const GROUND_SIZE = 48
 const EP_MESH_GRADIENT: GradientStop[] = EP_TOWN_GRADIENT.map((stop) => ({ ...stop }))
 
 function disposeEntry(entry: ChunkEntry) {
@@ -76,15 +85,31 @@ function cellWorldCenter(grid: VoxelGrid, ix: number, iy: number, iz: number) {
   ] as const
 }
 
-/** Interactive greedy mesh — blocky Townscaper masses on a Voxel Cloud density field. */
-function buildEpChunk(
+function clampInt(value: number, min: number, max: number) {
+  return value < min ? min : value > max ? max : value
+}
+
+/** Empty player-build chunk — noise does not pre-fill solids. */
+function buildEmptyEpChunk(
   terrain: TerrainParams,
   voxel: VoxelParams,
-  gradient: GradientStop[],
   coord: ChunkCoord,
-  densityAt: (x: number, y: number, z: number) => number,
+  gradient: GradientStop[],
+  densityAt?: (x: number, y: number, z: number) => number,
 ): ChunkEntry {
-  const grid = buildVoxelChunk(terrain, voxel, coord)
+  const size = Math.max(4, Math.round(voxel.resolution))
+  const cellSize = VOXEL_CHUNK_SIZE / size
+  const origin = chunkOrigin(coord)
+  const densities = new Float32Array(size * size * size)
+  densities.fill(voxel.isolevel - 1)
+  const grid: VoxelGrid = {
+    size,
+    densities,
+    cellSize,
+    origin,
+    chunk: coord,
+    colorHeight: Math.max(0.35, terrainAmplitude(terrain)),
+  }
   const geometry = buildGreedyInteractiveMesh(
     grid,
     voxel.isolevel,
@@ -121,12 +146,120 @@ function SoftWater() {
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, -0.12, 0]}
+      position={[0, -0.35, 0]}
       material={mat}
       raycast={() => null}
     >
-      <planeGeometry args={[220, 220]} />
+      <planeGeometry args={[GROUND_SIZE * 1.4, GROUND_SIZE * 1.4]} />
     </mesh>
+  )
+}
+
+/** Noise-shaped flat ground — walkable canvas; clicks place the first voxels. */
+function NoiseGround({
+  terrain,
+  editEnabled,
+  onTapPlace,
+}: {
+  terrain: TerrainParams
+  editEnabled: boolean
+  onTapPlace: (wx: number, wy: number, wz: number) => void
+}) {
+  const segments = Math.max(24, Math.round(terrain.detail))
+  const geometry = useMemo(
+    () => new PlaneGeometry(GROUND_SIZE, GROUND_SIZE, segments, segments),
+    [segments],
+  )
+  const geometryRef = useRef(geometry)
+  geometryRef.current = geometry
+
+  const sample = useMemo(() => createNoise(terrain), [terrain])
+  const heightScale = terrainAmplitude(terrain)
+
+  useLayoutEffect(() => {
+    const geo = geometryRef.current
+    const positions = geo.attributes.position
+    const colors = new Float32Array(positions.count * 3)
+
+    for (let i = 0; i < positions.count; i++) {
+      // PlaneGeometry lies in XY before group rotation; X/Y → world X/Z
+      const x = positions.getX(i)
+      const z = positions.getY(i)
+      const n = sample(x, z)
+      const h = n * heightScale
+      positions.setZ(i, h)
+
+      // Dark charcoal height tint (EP palette)
+      const t = (n + 1) * 0.5
+      const shade = 0.12 + t * 0.35
+      colors[i * 3] = shade
+      colors[i * 3 + 1] = shade + 0.02
+      colors[i * 3 + 2] = shade + 0.04
+    }
+
+    positions.needsUpdate = true
+    geo.setAttribute('color', new Float32BufferAttribute(colors, 3))
+    geo.computeVertexNormals()
+  }, [terrain, sample, heightScale])
+
+  useEffect(() => () => geometry.dispose(), [geometry])
+
+  const pointerRef = useRef<{
+    startedAt: number
+    pointerId: number
+    startX: number
+    startY: number
+    point: { x: number; y: number; z: number } | null
+    dragged: boolean
+  } | null>(null)
+
+  useEffect(() => {
+    if (!editEnabled) return
+    const onMove = (event: PointerEvent) => {
+      const h = pointerRef.current
+      if (!h || h.dragged || event.pointerId !== h.pointerId) return
+      const dx = event.clientX - h.startX
+      const dy = event.clientY - h.startY
+      if (dx * dx + dy * dy >= DRAG_CANCEL_PX * DRAG_CANCEL_PX) h.dragged = true
+    }
+    const onUp = (event: PointerEvent) => {
+      const h = pointerRef.current
+      if (!h || event.pointerId !== h.pointerId) return
+      const elapsed = performance.now() - h.startedAt
+      if (!h.dragged && elapsed < TAP_MAX_MS && h.point) {
+        onTapPlace(h.point.x, h.point.y, h.point.z)
+      }
+      pointerRef.current = null
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [editEnabled, onTapPlace])
+
+  const onPointerDown = (event: ThreeEvent<PointerEvent>) => {
+    if (!editEnabled || event.nativeEvent.button !== 0) return
+    if (document.pointerLockElement) return
+    pointerRef.current = {
+      startedAt: performance.now(),
+      pointerId: event.nativeEvent.pointerId,
+      startX: event.nativeEvent.clientX,
+      startY: event.nativeEvent.clientY,
+      point: { x: event.point.x, y: event.point.y, z: event.point.z },
+      dragged: false,
+    }
+  }
+
+  return (
+    <group rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh geometry={geometry} onPointerDown={editEnabled ? onPointerDown : undefined}>
+        <meshLambertMaterial vertexColors flatShading={false} />
+      </mesh>
+    </group>
   )
 }
 
@@ -136,7 +269,6 @@ type HoldState = {
   startedAt: number
 }
 
-/** Townscaper-style tap-to-add / hold-to-delete on a streamed chunk mesh. */
 function EpEditMesh({
   entry,
   material,
@@ -279,6 +411,9 @@ function EpEditMesh({
     }
   }
 
+  const vertCount = entry.geometry.getAttribute('position')?.count ?? 0
+  if (vertCount === 0) return null
+
   return (
     <>
       <mesh
@@ -313,13 +448,15 @@ function EpEditMesh({
   )
 }
 
-function TownCloudChunks({
+/** Player-built voxels only — start empty; stream empty grids around the camera. */
+function PlayerVoxelWorld({
   terrain,
   voxel,
   gradient,
   grain,
   editEnabled,
   onEntries,
+  groundPlaceRef,
 }: {
   terrain: TerrainParams
   voxel: VoxelParams
@@ -327,6 +464,7 @@ function TownCloudChunks({
   grain: number
   editEnabled: boolean
   onEntries: (entries: ChunkEntry[]) => void
+  groundPlaceRef: MutableRefObject<((wx: number, wy: number, wz: number) => void) | null>
 }) {
   const [entries, setEntries] = useState<ChunkEntry[]>([])
   const entriesRef = useRef<Map<string, ChunkEntry>>(new Map())
@@ -334,12 +472,26 @@ function TownCloudChunks({
   const lastCenterKey = useRef('')
   const materialRef = useRef<ShaderMaterial | null>(null)
   const gradientRef = useRef(gradient)
+  const voxelRef = useRef(voxel)
+  const terrainRef = useRef(terrain)
   gradientRef.current = gradient
+  voxelRef.current = voxel
+  terrainRef.current = terrain
 
-  const densityAt = useMemo(
-    () => createDensityFunction(terrain, voxel),
-    [terrain, voxel],
-  )
+  const densityAt = (x: number, y: number, z: number) => {
+    const v = voxelRef.current
+    const coord = worldToChunk(x, y, z)
+    const entry = entriesRef.current.get(chunkKey(coord))
+    if (!entry) return v.isolevel - 1
+    const { grid } = entry
+    const ix = Math.floor((x - grid.origin[0]) / grid.cellSize)
+    const iy = Math.floor((y - grid.origin[1]) / grid.cellSize)
+    const iz = Math.floor((z - grid.origin[2]) / grid.cellSize)
+    if (ix < 0 || iy < 0 || iz < 0 || ix >= grid.size || iy >= grid.size || iz >= grid.size) {
+      return v.isolevel - 1
+    }
+    return grid.densities[gridIndex(ix, iy, iz, grid.size)] ?? v.isolevel - 1
+  }
 
   const material = useMemo(() => {
     const mat = createEpMaterial({ grain })
@@ -348,18 +500,13 @@ function TownCloudChunks({
   }, [])
 
   useEffect(() => {
-    if (material.uniforms.uGrain) {
-      material.uniforms.uGrain.value = grain
-    }
+    if (material.uniforms.uGrain) material.uniforms.uGrain.value = grain
   }, [material, grain])
 
-  useEffect(() => {
-    return () => {
-      material.dispose()
-    }
-  }, [material])
+  useEffect(() => () => material.dispose(), [material])
 
-  const genKey = `${terrain.noiseId}|${terrain.frequency}|${terrain.amplitude}|${terrain.octaves}|${terrain.persistence}|${voxel.resolution}|${voxel.isolevel}|${voxel.bleed}|${voxel.volume}|${voxel.loadRadius}|${gradient.map((s) => `${s.position}:${s.color}`).join(';')}`
+  // Resolution / isolevel rebuild clears player builds; terrain noise does not (ground remeshes separately)
+  const voxelGenKey = `${voxel.resolution}|${voxel.isolevel}|${voxel.loadRadius}`
 
   useEffect(() => {
     for (const entry of entriesRef.current.values()) disposeEntry(entry)
@@ -367,32 +514,74 @@ function TownCloudChunks({
     lastCenterKey.current = ''
     setEntries([])
     onEntries([])
-  }, [genKey, onEntries])
+  }, [voxelGenKey, onEntries])
 
-  const editCell = (key: string, ix: number, iy: number, iz: number, mode: 'add' | 'remove') => {
-    const prev = entriesRef.current.get(key)
-    if (!prev) return
-    const nextDens = prev.grid.densities.slice()
-    const idx = gridIndex(ix, iy, iz, prev.grid.size)
-    if (mode === 'add') {
-      nextDens[idx] = Math.max(voxel.isolevel + 0.5, (nextDens[idx] ?? 0) + 1)
-    } else {
-      nextDens[idx] = Math.min(voxel.isolevel - 0.5, (nextDens[idx] ?? 0) - 1)
-    }
+  const remeshEntry = (prev: ChunkEntry, densities: Float32Array) => {
     disposeEntry(prev)
-    const grid: VoxelGrid = { ...prev.grid, densities: nextDens }
+    const grid: VoxelGrid = { ...prev.grid, densities }
     const geometry = buildGreedyInteractiveMesh(
       grid,
-      voxel.isolevel,
+      voxelRef.current.isolevel,
       gradientRef.current,
       densityAt,
     )
-    const next: ChunkEntry = { ...prev, grid, geometry }
-    entriesRef.current.set(key, next)
+    return { ...prev, grid, geometry }
+  }
+
+  const publish = () => {
     const list = Array.from(entriesRef.current.values())
     setEntries(list)
     onEntries(list)
   }
+
+  const ensureChunk = (coord: ChunkCoord) => {
+    const key = chunkKey(coord)
+    const existing = entriesRef.current.get(key)
+    if (existing) return existing
+    const next = buildEmptyEpChunk(
+      terrainRef.current,
+      voxelRef.current,
+      coord,
+      gradientRef.current,
+      densityAt,
+    )
+    entriesRef.current.set(key, next)
+    return next
+  }
+
+  const editCell = (key: string, ix: number, iy: number, iz: number, mode: 'add' | 'remove') => {
+    const prev = entriesRef.current.get(key)
+    if (!prev) return
+    const v = voxelRef.current
+    const nextDens = prev.grid.densities.slice()
+    const idx = gridIndex(ix, iy, iz, prev.grid.size)
+    if (mode === 'add') {
+      nextDens[idx] = Math.max(v.isolevel + 0.5, (nextDens[idx] ?? 0) + 1)
+    } else {
+      nextDens[idx] = Math.min(v.isolevel - 0.5, (nextDens[idx] ?? 0) - 1)
+    }
+    entriesRef.current.set(key, remeshEntry(prev, nextDens))
+    publish()
+  }
+
+  const placeOnGround = (wx: number, wy: number, wz: number) => {
+    const v = voxelRef.current
+    const size = Math.max(4, Math.round(v.resolution))
+    const cellSize = VOXEL_CHUNK_SIZE / size
+    // Sit the new cell on the ground hit (slightly above so we land in the surface cell)
+    const placeY = wy + cellSize * 0.25
+    const coord = worldToChunk(wx, placeY, wz)
+    const entry = ensureChunk(coord)
+    const { origin } = entry.grid
+    const ix = clampInt(Math.floor((wx - origin[0]) / cellSize), 0, size - 1)
+    const iy = clampInt(Math.floor((placeY - origin[1]) / cellSize), 0, size - 1)
+    const iz = clampInt(Math.floor((wz - origin[2]) / cellSize), 0, size - 1)
+    const idx = gridIndex(ix, iy, iz, size)
+    if (isSolid(entry.grid.densities[idx] ?? 0, v.isolevel)) return
+    editCell(entry.key, ix, iy, iz, 'add')
+  }
+
+  groundPlaceRef.current = placeOnGround
 
   useFrame(({ camera, clock }) => {
     if (materialRef.current?.uniforms.uTime) {
@@ -436,23 +625,23 @@ function TownCloudChunks({
     for (const coord of wanted) {
       const key = chunkKey(coord)
       if (map.has(key)) continue
-      map.set(key, buildEpChunk(terrain, voxel, gradient, coord, densityAt))
+      map.set(
+        key,
+        buildEmptyEpChunk(terrain, voxel, coord, gradient, densityAt),
+      )
       changed = true
     }
 
-    if (changed) {
-      const list = Array.from(map.values())
-      setEntries(list)
-      onEntries(list)
-    }
+    if (changed) publish()
   })
 
   useEffect(
     () => () => {
       for (const entry of entriesRef.current.values()) disposeEntry(entry)
       entriesRef.current.clear()
+      groundPlaceRef.current = null
     },
-    [],
+    [groundPlaceRef],
   )
 
   return (
@@ -474,18 +663,13 @@ function TownCloudChunks({
 
 type Peak = { x: number; y: number; z: number }
 
-/** Voxel Cloud filigree scaffold spans only — no colored accent blocks. */
 function TownScaffoldDecor({
   entries,
-  terrain,
   isolevel,
 }: {
   entries: ChunkEntry[]
-  terrain: TerrainParams
   isolevel: number
 }) {
-  const sample = useMemo(() => createNoise(terrain), [terrain])
-  const heightScale = terrainAmplitude(terrain)
   const density = EP_SCAFFOLD_DENSITY
 
   const scaffoldPositions = useMemo(() => {
@@ -508,13 +692,8 @@ function TownScaffoldDecor({
           const wx = origin[0] + (ix + 0.5) * cellSize
           const wy = origin[1] + (top + 0.5) * cellSize
           const wz = origin[2] + (iz + 0.5) * cellSize
-          const surface = sample(wx, wz) * heightScale
-          if (Math.abs(wy - surface) > cellSize * 2.5) continue
-
           const h = hash2(coord.cx * size + ix, coord.cz * size + iz, 1)
-          if (h > 0.62 && wy > surface * 0.15) {
-            peaks.push({ x: wx, y: wy + cellSize * 0.5, z: wz })
-          }
+          if (h > 0.55) peaks.push({ x: wx, y: wy + cellSize * 0.5, z: wz })
         }
       }
     }
@@ -538,13 +717,10 @@ function TownScaffoldDecor({
       verts.push(a.x, a.y, a.z, a.x, midY, a.z)
       verts.push(a.x, midY, a.z, best.x, midY, best.z)
       verts.push(best.x, midY, best.z, best.x, best.y, best.z)
-      if (hash2(i, 1, 11) > 0.45) {
-        verts.push(a.x, a.y + 0.15, a.z, best.x, midY, best.z)
-      }
     }
 
     return verts
-  }, [entries, isolevel, sample, heightScale, density])
+  }, [entries, isolevel, density])
 
   const scaffoldGeo = useMemo(() => {
     const geo = new BufferGeometry()
@@ -579,7 +755,6 @@ function TownScaffoldDecor({
 export default function ExperientialScene({
   terrain,
   voxel,
-  gradient: _sharedGradient,
   ep,
   firstPerson,
   onExitFirstPerson,
@@ -588,11 +763,18 @@ export default function ExperientialScene({
   const onEntries = useMemo(() => {
     return (list: ChunkEntry[]) => setEntries(list)
   }, [])
+  const groundPlaceRef = useRef<((wx: number, wy: number, wz: number) => void) | null>(null)
+
+  const onGroundTap = useMemo(() => {
+    return (wx: number, wy: number, wz: number) => {
+      groundPlaceRef.current?.(wx, wy, wz)
+    }
+  }, [])
 
   return (
     <Canvas
       className="scene-canvas"
-      camera={{ position: [5.2, 3.4, 5.8], fov: 48, near: 0.05, far: 220 }}
+      camera={{ position: [8, 5, 10], fov: 48, near: 0.05, far: 220 }}
       dpr={[1, 2]}
       gl={{ antialias: true }}
     >
@@ -603,25 +785,28 @@ export default function ExperientialScene({
       <directionalLight position={[6, 10, 3]} intensity={0.55} color="#d0d4da" />
       <directionalLight position={[-4, 3, -5]} intensity={0.12} color="#6a7380" />
       <SoftWater />
-      <TownCloudChunks
+      <NoiseGround
+        terrain={terrain}
+        editEnabled={!firstPerson}
+        onTapPlace={onGroundTap}
+      />
+      <PlayerVoxelWorld
         terrain={terrain}
         voxel={voxel}
         gradient={EP_MESH_GRADIENT}
         grain={ep.glitchIntensity}
         editEnabled={!firstPerson}
         onEntries={onEntries}
+        groundPlaceRef={groundPlaceRef}
       />
-      <TownScaffoldDecor
-        entries={entries}
-        terrain={terrain}
-        isolevel={voxel.isolevel}
-      />
+      <TownScaffoldDecor entries={entries} isolevel={voxel.isolevel} />
       <OrbitControls
         makeDefault
         enabled={!firstPerson}
         enableDamping
         dampingFactor={0.08}
         enablePan
+        target={[0, 0, 0]}
         minDistance={1.4}
         maxDistance={80}
       />

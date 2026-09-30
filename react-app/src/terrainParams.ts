@@ -138,6 +138,12 @@ function configureNoise(noise: FastNoiseLite, params: TerrainParams) {
       break
     case 'cellular':
       noise.SetNoiseType(FastNoiseLite.NoiseType.Cellular)
+      // CellValue spans ~[-1, 1] like other types. Default Distance stays
+      // compressed in a narrow negative band and reads as almost-flat terrain.
+      noise.SetCellularReturnType(FastNoiseLite.CellularReturnType.CellValue)
+      noise.SetCellularDistanceFunction(
+        FastNoiseLite.CellularDistanceFunction.EuclideanSq,
+      )
       noise.SetCellularJitter(extra)
       break
     case 'value':

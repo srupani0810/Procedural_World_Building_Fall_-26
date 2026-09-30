@@ -13,6 +13,7 @@ import type { VoxelParams, VoxelRenderMode } from './voxelParams.ts'
 import { SHADER_STUDIES, getShaderStudy } from './shaderStudies.ts'
 import type { ShaderStudyId } from './shaderStudies.ts'
 import type { EpParams } from './epParams.ts'
+import { createDefaultEpTerrain, createDefaultEpVoxel } from './epParams.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -37,6 +38,10 @@ type AppChromeProps = {
   onShaderMeshMode: (mode: VoxelRenderMode) => void
   epParams: EpParams
   onEpChange: (patch: Partial<EpParams>) => void
+  epTerrain: TerrainParams
+  onEpTerrainChange: (patch: Partial<TerrainParams>) => void
+  epVoxel: VoxelParams
+  onEpVoxelChange: (patch: Partial<VoxelParams>) => void
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -68,6 +73,10 @@ export default function AppChrome({
   onShaderMeshMode,
   epParams,
   onEpChange,
+  epTerrain,
+  onEpTerrainChange,
+  epVoxel,
+  onEpVoxelChange,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -77,6 +86,8 @@ export default function AppChrome({
 }: AppChromeProps) {
   const option = getNoiseOption(params.noiseId)
   const extra = params.extras[params.noiseId]
+  const epOption = getNoiseOption(epTerrain.noiseId)
+  const epExtra = epTerrain.extras[epTerrain.noiseId]
   const showSim = mode === '2d' && twoDTab === 'sim'
   const showVoxels = mode === 'voxels'
   const showShaders = mode === 'shaders'
@@ -185,12 +196,12 @@ export default function AppChrome({
           <>
             <ChromeSection
               title="Atmosphere"
-              tip="Dark mist and filigree grain — blocky Townscaper masses in a Voxel Cloud atmosphere. Click to add voxels; hold to remove."
+              tip="Dark mist and filigree. Noise shapes the ground; you place every voxel."
               defaultOpen
             >
               <p className="chrome-hint">
-                Dark blocky islands over water with porous filigree scaffold and soft mist. Click
-                a face to add a voxel beside it; press and hold (~400ms) to remove. Drag to orbit.
+                Noise sculpts a flat ground plane. The world starts empty of blocks — click the
+                ground or a voxel face to add; hold (~400ms) to remove. Drag to orbit.
               </p>
               <Slider
                 label="Fog density"
@@ -213,8 +224,101 @@ export default function AppChrome({
             </ChromeSection>
 
             <ChromeSection
+              title="World"
+              tip="EP-only: noise shapes the ground mesh; resolution/load radius are for your placed voxels."
+              defaultOpen
+            >
+              <label className="chrome-field">
+                <span className="chrome-slider-row">
+                  <span>Noise</span>
+                  <span className="chrome-slider-value">{epOption.label}</span>
+                </span>
+                <select
+                  value={epTerrain.noiseId}
+                  onChange={(event) =>
+                    onEpTerrainChange({ noiseId: event.target.value as NoiseId })
+                  }
+                >
+                  {NOISE_OPTIONS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Slider
+                label={epOption.extraLabel}
+                value={epExtra}
+                min={epOption.min}
+                max={epOption.max}
+                step={epOption.step}
+                display={epExtra.toFixed(2)}
+                onChange={(value) =>
+                  onEpTerrainChange({
+                    extras: { ...epTerrain.extras, [epTerrain.noiseId]: value },
+                  })
+                }
+              />
+              <Slider
+                label="Frequency"
+                value={epTerrain.frequency}
+                min={0.02}
+                max={1.5}
+                step={0.01}
+                display={epTerrain.frequency.toFixed(2)}
+                onChange={(frequency) => onEpTerrainChange({ frequency })}
+              />
+              <Slider
+                label="Amplitude"
+                value={epTerrain.amplitude}
+                min={0}
+                max={4}
+                step={0.01}
+                display={epTerrain.amplitude.toFixed(2)}
+                onChange={(amplitude) => onEpTerrainChange({ amplitude })}
+              />
+              <Slider
+                label="Resolution"
+                value={epVoxel.resolution}
+                min={4}
+                max={64}
+                step={1}
+                display={`${Math.round(epVoxel.resolution)}³ / chunk`}
+                onChange={(resolution) => onEpVoxelChange({ resolution })}
+              />
+              <Slider
+                label="Load radius"
+                value={epVoxel.loadRadius}
+                min={0}
+                max={4}
+                step={1}
+                display={`${Math.round(epVoxel.loadRadius)} chunk`}
+                onChange={(loadRadius) => onEpVoxelChange({ loadRadius })}
+              />
+              <Slider
+                label="Isolevel"
+                value={epVoxel.isolevel}
+                min={-2}
+                max={2}
+                step={0.01}
+                display={epVoxel.isolevel.toFixed(2)}
+                onChange={(isolevel) => onEpVoxelChange({ isolevel })}
+              />
+              <button
+                type="button"
+                className="chrome-reset chrome-reset-full"
+                onClick={() => {
+                  onEpTerrainChange(createDefaultEpTerrain())
+                  onEpVoxelChange(createDefaultEpVoxel())
+                }}
+              >
+                Reset EP world
+              </button>
+            </ChromeSection>
+
+            <ChromeSection
               title="Walk"
-              tip="First-person Jump In — WASD / arrows, mouse-look, Esc to exit."
+              tip="EP-only first-person Jump In — separate from the Voxels tab camera."
               defaultOpen
             >
               <div className="chrome-actions">

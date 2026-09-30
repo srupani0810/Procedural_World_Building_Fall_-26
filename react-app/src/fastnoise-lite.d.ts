@@ -14,6 +14,21 @@ declare module 'fastnoise-lite' {
       Ridged: string
       PingPong: string
     }
+    static CellularReturnType: {
+      CellValue: string
+      Distance: string
+      Distance2: string
+      Distance2Add: string
+      Distance2Sub: string
+      Distance2Mul: string
+      Distance2Div: string
+    }
+    static CellularDistanceFunction: {
+      Euclidean: string
+      EuclideanSq: string
+      Manhattan: string
+      Hybrid: string
+    }
     constructor(seed?: number)
     SetSeed(seed: number): void
     SetNoiseType(type: string): void
@@ -24,6 +39,8 @@ declare module 'fastnoise-lite' {
     SetFractalGain(gain: number): void
     SetFractalPingPongStrength(strength: number): void
     SetCellularJitter(jitter: number): void
+    SetCellularReturnType(type: string): void
+    SetCellularDistanceFunction(type: string): void
     GetNoise(x: number, y: number, z?: number): number
   }
 }

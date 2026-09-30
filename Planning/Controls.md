@@ -9,7 +9,7 @@ Reference for every control in the `react-app` panel. Descriptions match the cod
 | Noise, Field, Raw 2D | **3D**, **2D → Field**, **Voxels**, or **Shaders** (shared `TerrainParams`; not on EP) |
 | Voxel World, Meshing, Height Gradient | **Voxels** |
 | Shader study, Meshing (shader), Study mesh, Height Gradient | **Shaders** (gradient shared with Voxels) |
-| Atmosphere, Walk | **Experiential Playground \| EP** |
+| Atmosphere, World (EP), Walk | **Experiential Playground \| EP** (fully detached state) |
 | Hydraulic, Droplet, Sediment, Map | **2D → Sim** |
 
 Noise params also drive voxel / shader / EP heightfields (same `createNoise` / `createDensityFunction` pipeline).
@@ -21,7 +21,7 @@ Noise params also drive voxel / shader / EP heightfields (same `createNoise` / `
 | Control | What it does | Visual effect |
 |---|---|---|
 | **3D / 2D / Voxels / Shaders** | Sets `ViewMode` — which main canvas is mounted. | Switches between heightfield, 2D noise/sim, infinite voxels, and shader studies. |
-| **Experiential Playground \| EP** | Full-width tab under the four above (`mode === 'ep'`). | Dark Townscaper-like islands + Voxel Cloud mist/filigree scaffold; Jump In. |
+| **Experiential Playground \| EP** | Full-width tab under the four above (`mode === 'ep'`). | Fully detached playground (own terrain, voxels, FP camera, material). |
 | **Field / Sim** (2D only) | Sets `TwoDTab`. | **Field** = raw noise + Noise/Field/Raw 2D. **Sim** = erosion heightmap + Hydraulic/Droplet/Sediment/Map. |
 
 ---
@@ -149,23 +149,32 @@ Same shared `heightGradient` / `GradientEditor` as Voxels. Paints Interactive st
 
 ## Experiential Playground (EP)
 
-Full-width tab. Combines **Townscaper** (Oskar Stålberg) block masses over water with **Voxel Cloud** (Julian Edelmann) dark mist, porous filigree grain, and airy scaffold links (`ExperientialScene`, `EpParams`, `createEpMaterial`). Dark charcoal palette — no colored accent towers. Minimal panel. Uses `EP_TOWN_GRADIENT` (not the shared Height gradient).
+Fully detached from **Voxels** and **Shaders**: own `epTerrain`, `epVoxel`, `epFirstPerson`, `EpParams`, and `createEpMaterial` (`epMaterial.ts`). **Noise shapes a continuous ground mesh** (not pre-filled voxel terrain). **Player-placed voxels** start empty and grow via click/hold (`ExperientialScene`). Uses `EP_TOWN_GRADIENT`.
 
 ### Atmosphere
 
 | Control | Range (UI) | What it does | Visual effect |
 |---|---|---|---|
-| **Fog density** | 0–0.15 | `FogExp2` density; color `EP_FOG_COLOR` (`#14161a`). | Higher → thicker dark mist (Voxel Cloud depth). |
-| **Filigree** | 0–2 | Uniform `uGrain` on the EP soft-town shader (`glitchIntensity` in code). | Stronger porous/fibrous surface dither — solid ↔ airy transitions. |
+| **Fog density** | 0–0.15 | `FogExp2` density; color `EP_FOG_COLOR` (`#14161a`). | Higher → thicker dark mist. |
+| **Filigree** | 0–2 | Uniform `uGrain` on player-voxel material (`glitchIntensity` in code). | Stronger porous/fibrous dither on placed blocks. |
 
-Scaffold links use fixed `EP_SCAFFOLD_DENSITY` (no colored accents).
+### World (EP only)
+
+| Control | What it does | Visual effect |
+|---|---|---|
+| **Noise / Frequency / Amplitude** | Edit `epTerrain` only. | Resculpts the flat ground heightfield. |
+| **Resolution / Load radius / Isolevel** | Edit `epVoxel` only. | Player-voxel chunk detail / streaming / solid threshold. |
+| **Reset EP world** | Restores EP terrain + voxel defaults (clears streamed player chunks on voxel param change). | Default ground; empty build field. |
+
+Scaffold links appear only on player-built peaks (`EP_SCAFFOLD_DENSITY`).
 
 ### Build (mouse)
 
 | Gesture | What it does | Visual effect |
 |---|---|---|
-| **Click** (left, short) | Adds a voxel in the empty cell adjacent to the hit face. | Townscaper-style grow; remeshes that chunk. |
-| **Hold** (~400ms) | Removes the solid voxel under the cursor; pale ghost scales/fades while holding. | Carve / erase; drag past a few px cancels so orbit still works. |
+| **Click ground** | Places a voxel on the noise ground at the hit. | First blocks appear where you tap. |
+| **Click voxel face** | Adds a neighbor cell (Townscaper-style). | Grow structures. |
+| **Hold** (~400ms) on a voxel | Removes that solid; pale ghost while holding. | Carve; drag cancels so orbit still works. |
 
 Editing is off while Jump In (pointer lock) is active.
 
@@ -173,7 +182,7 @@ Editing is off while Jump In (pointer lock) is active.
 
 | Control | What it does | Visual effect |
 |---|---|---|
-| **Jump In** / **Exit** | Same `FirstPersonControls` as Voxels (shared `firstPerson` state for `voxels` and `ep`). | Walk the pastel islands; Esc / Exit returns to orbit. |
+| **Jump In** / **Exit** | EP-only `epFirstPerson` (not shared with Voxels). | Walk the playground; Esc / Exit returns to orbit. |
 
 ---
 

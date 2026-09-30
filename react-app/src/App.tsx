@@ -8,7 +8,11 @@ import ShaderScene from './ShaderScene.tsx'
 import ExperientialScene from './ExperientialScene.tsx'
 import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion.ts'
 import type { ErosionParams } from './erosion.ts'
-import { defaultEpParams } from './epParams.ts'
+import {
+  createDefaultEpTerrain,
+  createDefaultEpVoxel,
+  defaultEpParams,
+} from './epParams.ts'
 import type { EpParams } from './epParams.ts'
 import { defaultTerrainParams, normalizeTerrainPatch } from './terrainParams.ts'
 import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
@@ -28,6 +32,10 @@ function App() {
   /** Shaders-tab meshing only — does not change Voxels `voxelParams.renderMode`. */
   const [shaderMeshMode, setShaderMeshMode] = useState<VoxelRenderMode>('marching')
   const [epParams, setEpParams] = useState<EpParams>(defaultEpParams)
+  /** Fully detached EP world — not shared with Voxels / Shaders / main Noise. */
+  const [epTerrain, setEpTerrain] = useState<TerrainParams>(() => createDefaultEpTerrain())
+  const [epVoxel, setEpVoxel] = useState<VoxelParams>(() => createDefaultEpVoxel())
+  const [epFirstPerson, setEpFirstPerson] = useState(false)
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -56,8 +64,11 @@ function App() {
     if (next !== '2d') {
       setRunning(false)
     }
-    if (next !== 'voxels' && next !== 'ep') {
+    if (next !== 'voxels') {
       setFirstPerson(false)
+    }
+    if (next !== 'ep') {
+      setEpFirstPerson(false)
     }
   }
 
@@ -95,12 +106,11 @@ function App() {
           />
         ) : mode === 'ep' ? (
           <ExperientialScene
-            terrain={params}
-            voxel={voxelParams}
-            gradient={heightGradient}
+            terrain={epTerrain}
+            voxel={epVoxel}
             ep={epParams}
-            firstPerson={firstPerson}
-            onExitFirstPerson={() => setFirstPerson(false)}
+            firstPerson={epFirstPerson}
+            onExitFirstPerson={() => setEpFirstPerson(false)}
           />
         ) : showSim ? (
           <HeightMapView
@@ -141,9 +151,21 @@ function App() {
         onShaderMeshMode={setShaderMeshMode}
         epParams={epParams}
         onEpChange={(patch) => setEpParams((current) => ({ ...current, ...patch }))}
-        firstPerson={firstPerson}
-        onJumpIn={() => setFirstPerson(true)}
-        onExitFirstPerson={() => setFirstPerson(false)}
+        epTerrain={epTerrain}
+        onEpTerrainChange={(patch) =>
+          setEpTerrain((current) => ({ ...current, ...normalizeTerrainPatch(patch) }))
+        }
+        epVoxel={epVoxel}
+        onEpVoxelChange={(patch) => setEpVoxel((current) => ({ ...current, ...patch }))}
+        firstPerson={mode === 'ep' ? epFirstPerson : firstPerson}
+        onJumpIn={() => {
+          if (mode === 'ep') setEpFirstPerson(true)
+          else setFirstPerson(true)
+        }}
+        onExitFirstPerson={() => {
+          if (mode === 'ep') setEpFirstPerson(false)
+          else setFirstPerson(false)
+        }}
         onStart={() => {
           ensureMap()
           setRunning(true)
