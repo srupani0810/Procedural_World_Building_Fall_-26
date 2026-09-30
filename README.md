@@ -1,7 +1,5 @@
 # Procedural World Building — Fall ’26
 
-Interactive **React + Three.js** terrain playground for Cornell **DESIGN 6197**. Explore shared noise fields in 3D and 2D, run a hydraulic erosion sim, and walk an infinite voxel world with Marching Cubes or blocky Interactive meshing.
-
 ## Contents
 
 - [Progress by class](#progress-by-class)
