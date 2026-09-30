@@ -24,9 +24,10 @@ export const defaultVoxelParams: VoxelParams = {
   renderMode: 'interactive',
   resolution: 28,
   isolevel: 0,
-  bleed: 0.15,
+  bleed: 0.1,
   overlap: 1,
-  volume: 0.35,
+  /** 0 = pure 3D-tab heightfield; raise for caves / overhangs */
+  volume: 0,
 }
 
 export const VOXEL_RENDER_OPTIONS: { id: VoxelRenderMode; label: string }[] = [

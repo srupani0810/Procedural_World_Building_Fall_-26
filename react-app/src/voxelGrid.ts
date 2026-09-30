@@ -22,52 +22,38 @@ export function gridIndex(x: number, y: number, z: number, size: number) {
   return x + y * size + z * size * size
 }
 
-function smoothstep(edge0: number, edge1: number, x: number) {
-  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1)
-  return t * t * (3 - 2 * t)
-}
-
 /**
  * density(x, y, z): positive ≈ solid, negative ≈ air (at isolevel 0).
  *
- * Landscape-style field (not a filled cube):
- * - Solid only in a thin band just below the noise surface (no deep fill)
- * - Smooth horizontal falloff toward the grid rim so edges trail off
- * - Optional 3D noise (`volume`) for caves / overhangs inside that band
+ * Same terrain field as the 3D tab (`Scene.tsx`):
+ *   surfaceY = createNoise(terrain)(x, z) * terrain.height
+ * Voxels fill solid columns under that surface (a voxelized heightfield),
+ * instead of a separate island / shell volume.
  */
 export function createDensityFunction(terrain: TerrainParams, voxel: VoxelParams) {
   const sample2 = createNoise(terrain)
   const sample3 = createNoise3D(terrain)
   const height = Math.max(terrain.height, 0.01)
   const volume = clamp(voxel.volume, 0, 2)
-  const half = VOXEL_WORLD_SIZE * 0.5
-  /** World-unit thickness of solid crust under the surface. */
-  const crust = Math.max(0.2, height * 0.5)
+  // Match the 3D displacement range: noise ∈ [-1, 1] → surface ∈ [-height, height]
+  const floorY = -height
 
   return (x: number, y: number, z: number) => {
-    // Normalized distance to rim: 0 at center, ~1 at grid boundary
-    const nx = x / half
-    const nz = z / half
-    const radial = Math.hypot(nx, nz)
-    const square = Math.max(Math.abs(nx), Math.abs(nz))
-    // Blend so both circular islands and square-grid corners fade cleanly
-    const edgeDist = Math.max(radial * 0.9, square)
+    // Identical sampling to the 3D plane (local x,y → world x,z after rotation)
+    const surface = sample2(x, z) * height
 
-    // 1 in the interior → 0 at the rim (voxels thin out / empty)
-    const edgeMask = 1 - smoothstep(0.42, 0.93, edgeDist)
-    if (edgeMask < 0.002) return -1
+    // Outside the terrain slab (below the lowest possible surface)
+    if (y < floorY) return y - floorY
 
-    // Terrain lowers toward the rim so hills trail off instead of clipping
-    const surface = sample2(x, z) * height * (0.25 + 0.75 * edgeMask)
+    // Heightfield: solid below the surface, air above — same field as 3D
+    let density = surface - y
 
-    // depth > 0 below the surface. Shell is solid only for 0 < depth < crust.
-    const depth = surface - y
-    const shell = Math.min(depth, crust - depth)
+    // Optional 3D noise carve (Volume slider); 0 keeps a pure 3D-tab match
+    if (volume > 0.001) {
+      density += sample3(x, y, z) * volume * height * 0.3
+    }
 
-    const volumetric = sample3(x, y, z) * volume * height * 0.45
-
-    // Pull density to air as edgeMask → 0 (no flat vertical walls at the boundary)
-    return (shell + volumetric) * edgeMask - (1 - edgeMask) * 0.35
+    return density
   }
 }
 

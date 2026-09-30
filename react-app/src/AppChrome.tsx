@@ -130,9 +130,9 @@ export default function AppChrome({
             <section className="chrome-group">
               <h3>Voxel grid</h3>
               <p className="chrome-hint">
-                Step 1 builds an N³ density grid from density(x, y, z). Step 2 meshes that
-                same grid with Marching Cubes or Interactive blocks. In Interactive: click a
-                face to remove a voxel, shift-click to add one beside it.
+                Same noise heightfield as the 3D tab, stored as an N³ density grid and meshed
+                as voxel terrain. In Interactive: click a face to remove a voxel, shift-click
+                to add one beside it.
               </p>
               <Slider
                 label="Resolution"

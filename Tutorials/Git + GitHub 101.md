@@ -2,6 +2,8 @@
 
 A short, practical intro for people who have never used Git. You do not need to memorize every command. Follow the workflow, and look commands up when you need them.
 
+This guide also covers writing a proper **`README.md`** so your GitHub repo page explains the project and how to run it.
+
 ---
 
 ## What are Git and GitHub?
@@ -32,6 +34,8 @@ Other sites (GitLab, Bitbucket) work similarly. This tutorial uses GitHub becaus
 - **Push:** send your new commits from your computer to GitHub.
 - **Pull:** download new commits from GitHub onto your computer.
 - **Merge / pull request (PR):** a request to combine one branch into another, usually reviewed on GitHub.
+- **README.md:** Markdown file at the repo root. GitHub shows it on the repo home page — the project’s front door.
+- **Markdown (`.md`):** plain text with simple symbols for headings, lists, links, and code. GitHub turns it into a formatted page.
 
 A useful picture:
 
@@ -188,9 +192,7 @@ A typical repo page has:
 - **Commits** — the history
 - **Pull requests** — proposed merges
 - **Issues** — a to-do / bug list (optional)
-- **README.md** — the page people see first (Markdown)
-
-**README** is just a Markdown file in the repo root. GitHub renders it automatically.
+- **README.md** — rendered under the file list (see the next section)
 
 **.gitignore** is a text file that lists things Git should *not* track (exports, caches, huge binaries, secrets). Example:
 
@@ -202,6 +204,343 @@ __pycache__/
 ```
 
 Never commit passwords, API keys, or `.env` files.
+
+---
+
+## Writing a good README.md
+
+**`README.md`** belongs at the **repo root** (same level as folders like `Tutorials` or `react-app`, not inside `src`). GitHub shows it automatically on the repo home page — the first thing people read after the file list.
+
+| | README | Other docs |
+|---|---|---|
+| Job | “What is this, and how do I run it?” | Deep tutorials, planning notes |
+| Location | Repo root: `README.md` | e.g. `Tutorials/`, `docs/` |
+| Audience | Anyone opening the repo cold | People already inside the project |
+
+Think of it as the **front door**, not the whole house.
+
+```
+Someone opens your GitHub repo
+        ↓
+    reads README.md
+        ↓
+    knows what it is + how to run it
+```
+
+### What a proper README answers
+
+1. **What is this?** One or two sentences.  
+2. **Why should I care?** Class project, demo, tool — say the context.  
+3. **What does it look like?** Screenshot if you can.  
+4. **How do I run it?** Exact commands, in order.  
+5. **Who made it?** Name / course / term (optional license).
+
+Skip long essays, secret keys, and “TODO: write this later.”
+
+### Markdown cheat sheet (only what you need)
+
+~~~~markdown
+# Heading 1 (project title — use once at the top)
+
+## Heading 2 (main sections)
+
+### Heading 3 (subsections)
+
+**bold text**
+
+*italic text*
+
+- bullet list item
+- another item
+
+1. numbered step
+2. next step
+
+[Link text](https://example.com)
+
+![Alt text for an image](docs/screenshot.png)
+
+`inline code` (file names, short commands)
+
+```bash
+npm install
+npm run dev
+```
+~~~~
+
+Tips: blank line before/after headings and code blocks; image paths are relative to the README’s folder (usually the repo root).
+
+### Recommended sections
+
+Use these in order. Delete any that truly do not apply.
+
+- Title + short description  
+- Table of contents (optional; useful once the README is long)  
+- Screenshot / demo  
+- Features  
+- Requirements  
+- Getting started (clone → install → run)  
+- Usage  
+- Project structure  
+- Built with  
+- Author  
+- License (optional)
+
+### Table of contents with links
+
+A **table of contents (TOC)** is a short list of jump links to sections in the same README. On GitHub, each `## Heading` gets an automatic anchor. You link to it with `#` plus a slug of the heading.
+
+**How GitHub builds the link target from a heading:**
+
+1. Take the heading text (e.g. `Getting started`).  
+2. Lowercase it: `getting started`.  
+3. Turn spaces into hyphens: `getting-started`.  
+4. Drop most punctuation.  
+
+So `## Getting started` becomes the link `#getting-started`.
+
+**Example TOC** (put it near the top, after the description):
+
+```markdown
+## Contents
+
+- [Screenshot](#screenshot)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Getting started](#getting-started)
+- [Usage](#usage)
+- [Project structure](#project-structure)
+- [Built with](#built-with)
+- [Author](#author)
+```
+
+Those only work if you also have matching headings later, like:
+
+```markdown
+## Getting started
+```
+
+**Nested TOC** (optional) when you have `###` subsections:
+
+```markdown
+## Contents
+
+- [Getting started](#getting-started)
+  - [Requirements](#requirements)
+  - [Install and run](#install-and-run)
+- [Usage](#usage)
+```
+
+**Tips:**
+
+- Click a heading on the rendered GitHub page, then copy the URL after `#` if you are unsure of the slug.  
+- Keep the TOC short — only main `##` sections, not every tiny note.  
+- Update the TOC if you rename a heading (the link must match the new slug).  
+- GitHub also adds a small outline menu on some views; a written TOC still helps on long READMEs.
+
+### Folder structure (in the repo and in the README)
+
+Two related skills: **making** a clear folder layout on disk, and **showing** it in the README so people know where things live.
+
+#### 1. Create folders for a class / app repo
+
+In Terminal, from your **repo root**:
+
+```bash
+mkdir -p docs Tutorials Planning
+mkdir -p react-app   # only if you do not already have the app folder
+```
+
+| Folder | Typical use |
+|---|---|
+| `README.md` | Front page (file at root, not inside a folder) |
+| `docs/` | Screenshots, diagrams, extra docs |
+| `Tutorials/` | How-tos and class notes |
+| `Planning/` | Prompts, briefs, planning notes |
+| `react-app/` | The actual Vite / React / Three.js project |
+
+On a Mac you can also create folders in Finder; just keep names simple (no need for spaces if you can avoid them).
+
+Commit empty folders only if they contain a file (Git does not track empty directories). A common trick:
+
+```bash
+touch docs/.gitkeep
+git add docs/.gitkeep
+```
+
+#### 2. Show the structure in the README
+
+Use a fenced `text` code block with a tree. Readers can scan it in seconds:
+
+~~~~markdown
+## Project structure
+
+```text
+├── README.md             # Repo front page (you are here)
+├── docs/                 # Screenshots and diagrams
+│   └── screenshot.png
+├── Tutorials/            # Class how-tos
+├── Planning/             # Prompts and planning
+└── react-app/            # Runnable app (Vite + React + Three.js)
+    ├── package.json
+    └── src/
+```
+~~~~
+
+**How to draft the tree without guessing:**
+
+```bash
+# From the repo root — list top-level names
+ls
+
+# Optional: see a bit deeper (macOS / Linux)
+find . -maxdepth 2 -not -path '*/.*' -not -path './node_modules/*'
+```
+
+Or build the tree by hand: one line per folder/file, `├──` for items, `│` for nesting, `└──` for the last item in a group. Keep it to **important** folders — do not paste all of `node_modules`.
+
+#### 3. Link from the README into folders (optional)
+
+You can link to a folder or file on GitHub with a relative path (works in the rendered README):
+
+```markdown
+See class notes in [Tutorials](./Tutorials/) and app code in [react-app/src](./react-app/src/).
+```
+
+On github.com those open that path in the repo. Prefer this over absolute `https://github.com/...` links so forks still work.
+
+### Step by step
+
+1. **Create** `README.md` at the repo root (e.g. `Procedural_World_Building_Fall_'26/README.md`). One repo → one main README at the root.
+2. **Title + description** — if you cannot explain the project in two sentences, clarify the idea before decorating.
+3. **Getting started** — real commands a stranger can paste:
+
+~~~~markdown
+## Getting started
+
+### Requirements
+
+- Node.js 24+
+- npm
+
+### Install and run
+
+```bash
+cd react-app
+npm install
+npm run dev
+```
+
+Open the URL Vite prints (usually `http://localhost:5173`).
+~~~~
+
+4. **Usage** — tabs, sliders, what to click.  
+5. **Screenshot** — save e.g. `docs/screenshot.png`, then `![App preview](docs/screenshot.png)`. Commit the image too.  
+6. **Built with / Author** — stack + your name and course.  
+7. **Commit and push:**
+
+```bash
+git add README.md
+git add docs/screenshot.png   # if you added one
+git commit -m "Add project README"
+git push
+```
+
+8. **Check on GitHub** — open the repo, scroll under the file list, confirm it renders. You can edit small typos with the pencil icon on the website (then `git pull` locally later).
+
+### Starter template (copy and fill in)
+
+~~~~markdown
+# [Project title]
+
+[One or two sentences: what it is and who it is for.]
+
+## Contents
+
+- [Screenshot](#screenshot)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Getting started](#getting-started)
+- [Usage](#usage)
+- [Project structure](#project-structure)
+- [Built with](#built-with)
+- [Author](#author)
+
+## Screenshot
+
+![App preview](docs/screenshot.png)
+
+## Features
+
+- [Feature 1]
+- [Feature 2]
+- [Feature 3]
+
+## Requirements
+
+- Node.js 24+
+- npm
+
+## Getting started
+
+```bash
+git clone [YOUR_REPO_URL]
+cd [REPO_FOLDER]/react-app
+npm install
+npm run dev
+```
+
+Then open the local URL shown in the terminal.
+
+## Usage
+
+- [Main view or tab]: [what to do]
+- [Controls]: [what the sliders / buttons do]
+
+## Project structure
+
+```text
+├── README.md             # Repo front page (you are here)
+├── docs/                 # Screenshots and diagrams
+│   └── screenshot.png
+├── Tutorials/            # Class how-tos
+├── Planning/             # Prompts and planning
+└── react-app/            # Runnable app (Vite + React + Three.js)
+    ├── package.json
+    └── src/
+```
+
+More notes: [Tutorials](./Tutorials/) · app source: [react-app/src](./react-app/src/)
+
+## Built with
+
+- React, TypeScript, Vite
+- Three.js, React Three Fiber
+- [Other libraries]
+
+## Author
+
+[Your name] — DESIGN 6197 (Procedural World Building), Fall 2026
+
+## License
+
+[Optional: MIT, or “Course work — all rights reserved”]
+~~~~
+
+### README do / don’t
+
+| Do | Avoid |
+|---|---|
+| Put `README.md` at the **repo root** | Leaving the GitHub page empty while notes live only in `Tutorials/` |
+| Give **copy-pasteable** install/run commands | “Just run it” with no `cd` or `npm` steps |
+| Keep the top **short** | A wall of text before the title’s meaning is clear |
+| Update the README when run steps change | Describing last month’s folder layout |
+| Commit images you link | Hotlinking private Drive URLs that break for others |
+| Write for a **stranger** | Assuming they know your ports and `nvm` aliases |
+
+Optional later: live demo link (see [firebase.md](./firebase.md)), a short troubleshooting section, or a few badges. None of those replace clear run steps.
+
+More detail and the same template also live in [GitHub README.md](./GitHub%20README.md).
 
 ---
 
@@ -270,8 +609,9 @@ git switch main
 3. Edit `hello.txt` on github.com (pencil icon → commit).
 4. On your computer, `git pull` and confirm the edit arrived.
 5. Edit locally, commit, `git push`, and refresh GitHub.
+6. Add a root `README.md` (title, one-sentence description, how to open the project), commit, push, and confirm it renders on the repo page.
 
-If those five steps work, you know enough Git to version a class project.
+If those steps work, you know enough Git — and enough README — to present a class project on GitHub.
 
 ---
 
