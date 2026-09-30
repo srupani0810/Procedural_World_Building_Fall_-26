@@ -5,8 +5,11 @@ import NoiseMap from './NoiseMap.tsx'
 import Scene from './Scene.tsx'
 import VoxelScene from './VoxelScene.tsx'
 import ShaderScene from './ShaderScene.tsx'
+import ExperientialScene from './ExperientialScene.tsx'
 import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion.ts'
 import type { ErosionParams } from './erosion.ts'
+import { defaultEpParams } from './epParams.ts'
+import type { EpParams } from './epParams.ts'
 import { defaultTerrainParams } from './terrainParams.ts'
 import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import { defaultHeightGradient } from './heightGradient.ts'
@@ -24,6 +27,7 @@ function App() {
   const [shaderStudy, setShaderStudy] = useState<ShaderStudyId>('displace')
   /** Shaders-tab meshing only — does not change Voxels `voxelParams.renderMode`. */
   const [shaderMeshMode, setShaderMeshMode] = useState<VoxelRenderMode>('marching')
+  const [epParams, setEpParams] = useState<EpParams>(defaultEpParams)
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -52,7 +56,7 @@ function App() {
     if (next !== '2d') {
       setRunning(false)
     }
-    if (next !== 'voxels') {
+    if (next !== 'voxels' && next !== 'ep') {
       setFirstPerson(false)
     }
   }
@@ -89,6 +93,15 @@ function App() {
             meshMode={shaderMeshMode}
             gradient={heightGradient}
           />
+        ) : mode === 'ep' ? (
+          <ExperientialScene
+            terrain={params}
+            voxel={voxelParams}
+            gradient={heightGradient}
+            ep={epParams}
+            firstPerson={firstPerson}
+            onExitFirstPerson={() => setFirstPerson(false)}
+          />
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -124,6 +137,8 @@ function App() {
         onShaderStudy={setShaderStudy}
         shaderMeshMode={shaderMeshMode}
         onShaderMeshMode={setShaderMeshMode}
+        epParams={epParams}
+        onEpChange={(patch) => setEpParams((current) => ({ ...current, ...patch }))}
         firstPerson={firstPerson}
         onJumpIn={() => setFirstPerson(true)}
         onExitFirstPerson={() => setFirstPerson(false)}

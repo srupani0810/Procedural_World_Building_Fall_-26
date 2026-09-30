@@ -168,22 +168,24 @@ const GLITCH_VERT = TOON_VERT
 
 const GLITCH_FRAG = /* glsl */ `
 ${COMMON_FRAG_HEAD}
+uniform float uGlitch;
 void main() {
   vec3 base = heightBase();
   vec3 n = safeNormal(vNormal);
   float ndl = max(dot(n, normalize(uLightDir)), 0.0);
   vec3 lit = base * (0.35 + 0.65 * ndl);
 
-  float split = 0.04 + 0.03 * sin(uTime * 8.0 + vWorldPos.y * 3.0);
+  float gAmt = clamp(uGlitch, 0.0, 2.0);
+  float split = (0.04 + 0.03 * sin(uTime * 8.0 + vWorldPos.y * 3.0)) * gAmt;
   float r = lit.r + split * hash(vWorldPos.xz + uTime);
   float g = lit.g;
   float b = lit.b - split * hash(vWorldPos.zx - uTime * 1.3);
 
-  float scan = sin(gl_FragCoord.y * 1.35 + uTime * 20.0) * 0.08;
-  vec3 col = vec3(r, g, b) - scan;
+  float scan = sin(gl_FragCoord.y * 1.35 + uTime * 20.0) * 0.08 * gAmt;
+  vec3 col = mix(lit, vec3(r, g, b) - scan, clamp(gAmt, 0.0, 1.0));
 
   float burst = step(0.92, hash(floor(gl_FragCoord.xy / 4.0) + floor(uTime * 6.0)));
-  col = mix(col, vec3(hash(gl_FragCoord.xy + uTime), hash(gl_FragCoord.yx), 1.0), burst * 0.55);
+  col = mix(col, vec3(hash(gl_FragCoord.xy + uTime), hash(gl_FragCoord.yx), 1.0), burst * 0.55 * gAmt);
 
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
@@ -199,7 +201,10 @@ const SOURCES: Record<
   glitch: { vertexShader: GLITCH_VERT, fragmentShader: GLITCH_FRAG },
 }
 
-export function createStudyMaterial(study: ShaderStudyId): ShaderMaterial {
+export function createStudyMaterial(
+  study: ShaderStudyId,
+  options?: { glitchIntensity?: number },
+): ShaderMaterial {
   const source = SOURCES[study]
   return new ShaderMaterial({
     uniforms: {
@@ -207,6 +212,7 @@ export function createStudyMaterial(study: ShaderStudyId): ShaderMaterial {
       uLightDir: { value: new Vector3(0.45, 0.85, 0.35).normalize() },
       uColorLow: { value: new Color('#1238c8') },
       uColorHigh: { value: new Color('#ff1a1a') },
+      uGlitch: { value: options?.glitchIntensity ?? 1 },
     },
     vertexShader: source.vertexShader,
     fragmentShader: source.fragmentShader,

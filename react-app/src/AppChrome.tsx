@@ -12,6 +12,7 @@ import { VOXEL_RENDER_OPTIONS, defaultVoxelParams } from './voxelParams.ts'
 import type { VoxelParams, VoxelRenderMode } from './voxelParams.ts'
 import { SHADER_STUDIES, getShaderStudy } from './shaderStudies.ts'
 import type { ShaderStudyId } from './shaderStudies.ts'
+import type { EpParams } from './epParams.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -34,6 +35,8 @@ type AppChromeProps = {
   onShaderStudy: (study: ShaderStudyId) => void
   shaderMeshMode: VoxelRenderMode
   onShaderMeshMode: (mode: VoxelRenderMode) => void
+  epParams: EpParams
+  onEpChange: (patch: Partial<EpParams>) => void
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -63,6 +66,8 @@ export default function AppChrome({
   onShaderStudy,
   shaderMeshMode,
   onShaderMeshMode,
+  epParams,
+  onEpChange,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -75,6 +80,7 @@ export default function AppChrome({
   const showSim = mode === '2d' && twoDTab === 'sim'
   const showVoxels = mode === 'voxels'
   const showShaders = mode === 'shaders'
+  const showEp = mode === 'ep'
   const study = getShaderStudy(shaderStudy)
   const renderLabel =
     VOXEL_RENDER_OPTIONS.find((item) => item.id === voxelParams.renderMode)?.label ?? '—'
@@ -90,7 +96,15 @@ export default function AppChrome({
 
       <aside className="chrome-panel" aria-label="Parameters">
         <div className="chrome-panel-header">
-          <h2>{showVoxels ? 'Voxels' : showShaders ? 'Shaders' : 'Terrain'}</h2>
+          <h2>
+            {showEp
+              ? 'Playground'
+              : showVoxels
+                ? 'Voxels'
+                : showShaders
+                  ? 'Shaders'
+                  : 'Terrain'}
+          </h2>
         </div>
 
         <div className="chrome-modes chrome-modes-4" role="tablist" aria-label="View">
@@ -132,6 +146,18 @@ export default function AppChrome({
           </button>
         </div>
 
+        <div className="chrome-modes chrome-modes-ep" role="tablist" aria-label="Experiential">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={showEp}
+            className={showEp ? 'is-active' : undefined}
+            onClick={() => onMode('ep')}
+          >
+            Experiential Playground | EP
+          </button>
+        </div>
+
         {mode === '2d' ? (
           <div className="chrome-modes" role="tablist" aria-label="2D">
             <button
@@ -153,6 +179,81 @@ export default function AppChrome({
               Sim
             </button>
           </div>
+        ) : null}
+
+        {showEp ? (
+          <>
+            <ChromeSection
+              title="Atmosphere"
+              tip="Fog, glitch strength, and neon scatter for the combined cyberpunk playground."
+              defaultOpen
+            >
+              <p className="chrome-hint">
+                Infinite voxels + Glitch shader + fog, neon signs, and cable lines. Jump In to walk
+                the field.
+              </p>
+              <Slider
+                label="Fog density"
+                value={epParams.fogDensity}
+                min={0}
+                max={0.15}
+                step={0.001}
+                display={epParams.fogDensity.toFixed(3)}
+                onChange={(fogDensity) => onEpChange({ fogDensity })}
+              />
+              <Slider
+                label="Glitch intensity"
+                value={epParams.glitchIntensity}
+                min={0}
+                max={2}
+                step={0.01}
+                display={epParams.glitchIntensity.toFixed(2)}
+                onChange={(glitchIntensity) => onEpChange({ glitchIntensity })}
+              />
+              <Slider
+                label="Neon density"
+                value={epParams.neonDensity}
+                min={0}
+                max={1}
+                step={0.01}
+                display={epParams.neonDensity.toFixed(2)}
+                onChange={(neonDensity) => onEpChange({ neonDensity })}
+              />
+            </ChromeSection>
+
+            <ChromeSection
+              title="Walk"
+              tip="First-person Jump In — WASD / arrows, mouse-look, Esc to exit."
+              defaultOpen
+            >
+              <div className="chrome-actions">
+                {firstPerson ? (
+                  <button
+                    type="button"
+                    className="chrome-reset chrome-reset-full"
+                    onClick={onExitFirstPerson}
+                  >
+                    Exit
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="chrome-reset chrome-reset-full"
+                    onClick={onJumpIn}
+                  >
+                    Jump In
+                  </button>
+                )}
+              </div>
+              {firstPerson ? (
+                <p className="chrome-hint">
+                  WASD / arrows walk · click canvas to look · Esc or Exit to leave
+                </p>
+              ) : (
+                <p className="chrome-hint">Orbit to explore, or Jump In for first-person.</p>
+              )}
+            </ChromeSection>
+          </>
         ) : null}
 
         {showShaders ? (
@@ -526,7 +627,7 @@ export default function AppChrome({
               />
             </ChromeSection>
           </>
-        ) : (
+        ) : showEp ? null : (
           <>
             <ChromeSection
               title="Noise"
