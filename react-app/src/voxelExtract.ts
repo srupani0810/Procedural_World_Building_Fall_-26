@@ -1,7 +1,7 @@
 import { BufferAttribute, BufferGeometry } from 'three'
 import { edgeTable, triTable } from 'three/examples/jsm/objects/MarchingCubes.js'
 import { heightToRgb } from './heightColor.ts'
-import { cellWorldPosition, gridIndex } from './voxelGrid.ts'
+import { gridIndex, isSolid } from './voxelGrid.ts'
 import type { VoxelGrid } from './voxelGrid.ts'
 
 function clamp(value: number, min: number, max: number) {
@@ -37,49 +37,70 @@ function lerpEdge(
   return [p0[0] + t * (p1[0] - p0[0]), p0[1] + t * (p1[1] - p0[1]), p0[2] + t * (p1[2] - p0[2])]
 }
 
+type DensityAt = (x: number, y: number, z: number) => number
+
 /**
- * Step 2 — Marching Cubes over the cell-centered grid.
- * Separate path from Interactive greedy meshing; same VoxelGrid input.
+ * Marching Cubes over a chunk. Iterates one cell past the stored grid by
+ * sampling `densityAt` in world space so the dual lattice bridges chunk borders.
  */
 export function extractMarchingCubesFromGrid(
   grid: VoxelGrid,
   isolevel: number,
+  densityAt?: DensityAt,
 ): BufferGeometry {
-  const { size, densities } = grid
+  const { size, densities, cellSize, colorHeight } = grid
   const positions: number[] = []
   const colors: number[] = []
 
-  for (let z = 0; z < size - 1; z++) {
-    for (let y = 0; y < size - 1; y++) {
-      for (let x = 0; x < size - 1; x++) {
+  const sample = (lx: number, ly: number, lz: number) => {
+    if (lx >= 0 && ly >= 0 && lz >= 0 && lx < size && ly < size && lz < size) {
+      return densities[gridIndex(lx, ly, lz, size)] ?? 0
+    }
+    if (!densityAt) return isolevel - 1
+    const wx = grid.origin[0] + (lx + 0.5) * cellSize
+    const wy = grid.origin[1] + (ly + 0.5) * cellSize
+    const wz = grid.origin[2] + (lz + 0.5) * cellSize
+    return densityAt(wx, wy, wz)
+  }
+
+  const cornerWorld = (lx: number, ly: number, lz: number): [number, number, number] => [
+    grid.origin[0] + (lx + 0.5) * cellSize,
+    grid.origin[1] + (ly + 0.5) * cellSize,
+    grid.origin[2] + (lz + 0.5) * cellSize,
+  ]
+
+  // Include the dual cubes that straddle this chunk and +X/+Y/+Z neighbors
+  for (let z = 0; z < size; z++) {
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
         const cornersVals = [
-          densities[gridIndex(x, y, z, size)] ?? 0,
-          densities[gridIndex(x + 1, y, z, size)] ?? 0,
-          densities[gridIndex(x + 1, y, z + 1, size)] ?? 0,
-          densities[gridIndex(x, y, z + 1, size)] ?? 0,
-          densities[gridIndex(x, y + 1, z, size)] ?? 0,
-          densities[gridIndex(x + 1, y + 1, z, size)] ?? 0,
-          densities[gridIndex(x + 1, y + 1, z + 1, size)] ?? 0,
-          densities[gridIndex(x, y + 1, z + 1, size)] ?? 0,
+          sample(x, y, z),
+          sample(x + 1, y, z),
+          sample(x + 1, y, z + 1),
+          sample(x, y, z + 1),
+          sample(x, y + 1, z),
+          sample(x + 1, y + 1, z),
+          sample(x + 1, y + 1, z + 1),
+          sample(x, y + 1, z + 1),
         ]
 
         let cubeIndex = 0
         for (let i = 0; i < 8; i++) {
-          if ((cornersVals[i] ?? 0) >= isolevel) cubeIndex |= 1 << i
+          if (isSolid(cornersVals[i] ?? 0, isolevel)) cubeIndex |= 1 << i
         }
 
         const edges = edgeTable[cubeIndex] ?? 0
         if (edges === 0) continue
 
         const cornerPos: [number, number, number][] = [
-          cellWorldPosition(x, y, z, grid),
-          cellWorldPosition(x + 1, y, z, grid),
-          cellWorldPosition(x + 1, y, z + 1, grid),
-          cellWorldPosition(x, y, z + 1, grid),
-          cellWorldPosition(x, y + 1, z, grid),
-          cellWorldPosition(x + 1, y + 1, z, grid),
-          cellWorldPosition(x + 1, y + 1, z + 1, grid),
-          cellWorldPosition(x, y + 1, z + 1, grid),
+          cornerWorld(x, y, z),
+          cornerWorld(x + 1, y, z),
+          cornerWorld(x + 1, y, z + 1),
+          cornerWorld(x, y, z + 1),
+          cornerWorld(x, y + 1, z),
+          cornerWorld(x + 1, y + 1, z),
+          cornerWorld(x + 1, y + 1, z + 1),
+          cornerWorld(x, y + 1, z + 1),
         ]
 
         const vertList: ([number, number, number] | null)[] = Array.from({ length: 12 }, () => null)
@@ -104,7 +125,7 @@ export function extractMarchingCubesFromGrid(
           if (!a || !b || !c) continue
           positions.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2])
           const midY = (a[1] + b[1] + c[1]) / 3
-          const t = clamp(midY / (grid.half * 2) + 0.5, 0, 1)
+          const t = clamp(midY / (colorHeight * 2) + 0.5, 0, 1)
           const [r, g, bl] = heightToRgb(t)
           for (let k = 0; k < 3; k++) colors.push(r / 255, g / 255, bl / 255)
         }

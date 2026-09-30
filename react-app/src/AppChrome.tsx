@@ -128,20 +128,28 @@ export default function AppChrome({
         {showVoxels ? (
           <>
             <section className="chrome-group">
-              <h3>Voxel grid</h3>
+              <h3>Voxel world</h3>
               <p className="chrome-hint">
-                Same noise heightfield as the 3D tab, stored as an N³ density grid and meshed
-                as voxel terrain. In Interactive: click a face to remove a voxel, shift-click
-                to add one beside it.
+                Infinite heightfield (same noise as 3D) streamed as chunks around the camera.
+                Pan / orbit to load new chunks. Interactive: click to remove, shift-click to add.
               </p>
               <Slider
                 label="Resolution"
                 value={voxelParams.resolution}
                 min={8}
-                max={40}
+                max={24}
                 step={1}
-                display={`${Math.round(voxelParams.resolution)}³`}
+                display={`${Math.round(voxelParams.resolution)}³ / chunk`}
                 onChange={(resolution) => onVoxelChange({ resolution })}
+              />
+              <Slider
+                label="Load radius"
+                value={voxelParams.loadRadius}
+                min={0}
+                max={2}
+                step={1}
+                display={`${Math.round(voxelParams.loadRadius)} chunk`}
+                onChange={(loadRadius) => onVoxelChange({ loadRadius })}
               />
               <Slider
                 label="Isolevel"

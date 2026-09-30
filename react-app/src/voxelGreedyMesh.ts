@@ -1,7 +1,7 @@
 import { BufferAttribute, BufferGeometry } from 'three'
 import { sampleHeightGradient } from './heightGradient.ts'
 import type { GradientStop } from './heightGradient.ts'
-import { gridIndex, isSolid } from './voxelGrid.ts'
+import { cellCornerPosition, gridIndex, isSolid } from './voxelGrid.ts'
 import type { VoxelGrid } from './voxelGrid.ts'
 
 function clamp(value: number, min: number, max: number) {
@@ -10,10 +10,10 @@ function clamp(value: number, min: number, max: number) {
 
 function colorAtY(
   wy: number,
-  half: number,
+  colorHeight: number,
   gradient: GradientStop[],
 ): [number, number, number] {
-  const t = clamp(wy / (half * 2) + 0.5, 0, 1)
+  const t = clamp(wy / (colorHeight * 2) + 0.5, 0, 1)
   const [r, g, b] = sampleHeightGradient(gradient, t)
   return [r / 255, g / 255, b / 255]
 }
@@ -28,35 +28,42 @@ function pushVert(
   nx: number,
   ny: number,
   nz: number,
-  half: number,
+  colorHeight: number,
   gradient: GradientStop[],
 ) {
   positions.push(px, py, pz)
   normals.push(nx, ny, nz)
-  const [r, g, b] = colorAtY(py, half, gradient)
+  const [r, g, b] = colorAtY(py, colorHeight, gradient)
   colors.push(r, g, b)
 }
 
+type DensityAt = (x: number, y: number, z: number) => number
+
 /**
- * Interactive mesher: face-culled + greedy-meshed quads from the density grid.
- * Separate from Marching Cubes; reads the same VoxelGrid densities.
- *
- * Algorithm: Lysenko / 0fps greedy meshing — only emit a face when a solid
- * cell meets air, then merge coplanar runs into larger quads.
+ * Interactive mesher: face-culled + greedy-meshed quads.
+ * Out-of-chunk neighbors are sampled via `densityAt` in world space so faces
+ * are not drawn between two solid cells across a chunk border (no wall seams).
  */
 export function buildGreedyInteractiveMesh(
   grid: VoxelGrid,
   isolevel: number,
   gradient: GradientStop[],
+  densityAt?: DensityAt,
 ): BufferGeometry {
-  const { size, densities, half, cellSize } = grid
+  const { size, densities, cellSize, colorHeight } = grid
   const positions: number[] = []
   const normals: number[] = []
   const colors: number[] = []
 
-  const solid = (x: number, y: number, z: number) => {
-    if (x < 0 || y < 0 || z < 0 || x >= size || y >= size || z >= size) return false
-    return isSolid(densities[gridIndex(x, y, z, size)] ?? 0, isolevel)
+  const solid = (lx: number, ly: number, lz: number) => {
+    if (lx >= 0 && ly >= 0 && lz >= 0 && lx < size && ly < size && lz < size) {
+      return isSolid(densities[gridIndex(lx, ly, lz, size)] ?? 0, isolevel)
+    }
+    if (!densityAt) return false
+    const wx = grid.origin[0] + (lx + 0.5) * cellSize
+    const wy = grid.origin[1] + (ly + 0.5) * cellSize
+    const wz = grid.origin[2] + (lz + 0.5) * cellSize
+    return isSolid(densityAt(wx, wy, wz), isolevel)
   }
 
   const dims = [size, size, size]
@@ -76,12 +83,8 @@ export function buildGreedyInteractiveMesh(
       let n = 0
       for (x[v] = 0; x[v]! < maskH; x[v]!++) {
         for (x[u] = 0; x[u]! < maskW; x[u]!++, n++) {
-          const a =
-            x[d]! >= 0 ? solid(x[0]!, x[1]!, x[2]!) : false
-          const b =
-            x[d]! < dims[d]! - 1
-              ? solid(x[0]! + q[0]!, x[1]! + q[1]!, x[2]! + q[2]!)
-              : false
+          const a = solid(x[0]!, x[1]!, x[2]!)
+          const b = solid(x[0]! + q[0]!, x[1]! + q[1]!, x[2]! + q[2]!)
 
           if (a === b) mask[n] = 0
           else if (a) mask[n] = 1
@@ -119,9 +122,7 @@ export function buildGreedyInteractiveMesh(
               dv[u] = w
             }
 
-            const ox = -half + x[0]! * cellSize
-            const oy = -half + x[1]! * cellSize
-            const oz = -half + x[2]! * cellSize
+            const [ox, oy, oz] = cellCornerPosition(x[0]!, x[1]!, x[2]!, grid)
             const dux = du[0]! * cellSize
             const duy = du[1]! * cellSize
             const duz = du[2]! * cellSize
@@ -133,9 +134,6 @@ export function buildGreedyInteractiveMesh(
             const ny = q[1]! * c
             const nz = q[2]! * c
 
-            // v0 -- v1
-            // |      |
-            // v3 -- v2
             const x0 = ox
             const y0 = oy
             const z0 = oz
@@ -149,13 +147,13 @@ export function buildGreedyInteractiveMesh(
             const y3 = oy + dvy
             const z3 = oz + dvz
 
-            pushVert(positions, normals, colors, x0, y0, z0, nx, ny, nz, half, gradient)
-            pushVert(positions, normals, colors, x1, y1, z1, nx, ny, nz, half, gradient)
-            pushVert(positions, normals, colors, x2, y2, z2, nx, ny, nz, half, gradient)
+            pushVert(positions, normals, colors, x0, y0, z0, nx, ny, nz, colorHeight, gradient)
+            pushVert(positions, normals, colors, x1, y1, z1, nx, ny, nz, colorHeight, gradient)
+            pushVert(positions, normals, colors, x2, y2, z2, nx, ny, nz, colorHeight, gradient)
 
-            pushVert(positions, normals, colors, x0, y0, z0, nx, ny, nz, half, gradient)
-            pushVert(positions, normals, colors, x2, y2, z2, nx, ny, nz, half, gradient)
-            pushVert(positions, normals, colors, x3, y3, z3, nx, ny, nz, half, gradient)
+            pushVert(positions, normals, colors, x0, y0, z0, nx, ny, nz, colorHeight, gradient)
+            pushVert(positions, normals, colors, x2, y2, z2, nx, ny, nz, colorHeight, gradient)
+            pushVert(positions, normals, colors, x3, y3, z3, nx, ny, nz, colorHeight, gradient)
 
             for (let jj = 0; jj < h; jj++) {
               for (let ii = 0; ii < w; ii++) {
@@ -181,7 +179,7 @@ export function buildGreedyInteractiveMesh(
   return geometry
 }
 
-/** Map a world-space face hit to a voxel index (inside or outside the face). */
+/** Map a world-space face hit to a voxel index inside this chunk. */
 export function hitToVoxelIndex(
   point: { x: number; y: number; z: number },
   normal: { x: number; y: number; z: number },
@@ -192,9 +190,9 @@ export function hitToVoxelIndex(
   const wx = point.x + normal.x * offset
   const wy = point.y + normal.y * offset
   const wz = point.z + normal.z * offset
-  const ix = Math.floor((wx + grid.half) / grid.cellSize)
-  const iy = Math.floor((wy + grid.half) / grid.cellSize)
-  const iz = Math.floor((wz + grid.half) / grid.cellSize)
+  const ix = Math.floor((wx - grid.origin[0]) / grid.cellSize)
+  const iy = Math.floor((wy - grid.origin[1]) / grid.cellSize)
+  const iz = Math.floor((wz - grid.origin[2]) / grid.cellSize)
   if (
     ix < 0 ||
     iy < 0 ||

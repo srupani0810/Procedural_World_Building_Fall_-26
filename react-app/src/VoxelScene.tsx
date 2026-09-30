@@ -1,13 +1,21 @@
 import { OrbitControls } from '@react-three/drei'
-import { Canvas, type ThreeEvent } from '@react-three/fiber'
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DoubleSide } from 'three'
+import type { BufferGeometry } from 'three'
 import type { GradientStop } from './heightGradient.ts'
 import type { TerrainParams } from './terrainParams.ts'
 import { extractMarchingCubesFromGrid } from './voxelExtract.ts'
 import { buildGreedyInteractiveMesh, hitToVoxelIndex } from './voxelGreedyMesh.ts'
-import { buildVoxelGrid, gridIndex } from './voxelGrid.ts'
-import type { VoxelGrid } from './voxelGrid.ts'
+import {
+  buildVoxelChunk,
+  chunkKey,
+  chunksAround,
+  createDensityFunction,
+  gridIndex,
+  worldToChunk,
+} from './voxelGrid.ts'
+import type { ChunkCoord, VoxelGrid } from './voxelGrid.ts'
 import type { VoxelParams } from './voxelParams.ts'
 
 type Props = {
@@ -16,41 +24,47 @@ type Props = {
   gradient: GradientStop[]
 }
 
-type LiveProps = {
+type ChunkEntry = {
+  key: string
+  coord: ChunkCoord
   grid: VoxelGrid
+  geometry: BufferGeometry
+}
+
+const STREAM_INTERVAL_MS = 120
+
+function disposeEntry(entry: ChunkEntry) {
+  entry.geometry.dispose()
+}
+
+function buildChunkEntry(
+  terrain: TerrainParams,
+  voxel: VoxelParams,
+  gradient: GradientStop[],
+  coord: ChunkCoord,
+  densityAt: (x: number, y: number, z: number) => number,
+): ChunkEntry {
+  const grid = buildVoxelChunk(terrain, voxel, coord)
+  const geometry =
+    voxel.renderMode === 'marching'
+      ? extractMarchingCubesFromGrid(grid, voxel.isolevel, densityAt)
+      : buildGreedyInteractiveMesh(grid, voxel.isolevel, gradient, densityAt)
+  return { key: chunkKey(coord), coord, grid, geometry }
+}
+
+function ChunkMesh({
+  entry,
+  interactive,
+  voxel,
+  onEdit,
+}: {
+  entry: ChunkEntry
+  interactive: boolean
   voxel: VoxelParams
-  gradient: GradientStop[]
-  onEditDensities: (next: Float32Array) => void
-}
-
-/**
- * Step 1: shared N³ density grid (density inputs only — not meshing mode).
- */
-function useBaseVoxelGrid(terrain: TerrainParams, voxel: VoxelParams): VoxelGrid {
-  const { resolution, bleed, volume } = voxel
-  return useMemo(
-    () =>
-      buildVoxelGrid(terrain, {
-        ...voxel,
-        resolution,
-        bleed,
-        volume,
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- density inputs only
-    [terrain, resolution, bleed, volume],
-  )
-}
-
-function VoxelInteractive({ grid, voxel, gradient, onEditDensities }: LiveProps) {
-  const geometry = useMemo(
-    () => buildGreedyInteractiveMesh(grid, voxel.isolevel, gradient),
-    [grid, voxel.isolevel, gradient],
-  )
-
-  useLayoutEffect(() => () => geometry.dispose(), [geometry])
-
+  onEdit: (key: string, densities: Float32Array) => void
+}) {
   const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
-    if (!event.face) return
+    if (!interactive || !event.face) return
     event.stopPropagation()
 
     const normal = event.face.normal
@@ -59,67 +73,144 @@ function VoxelInteractive({ grid, voxel, gradient, onEditDensities }: LiveProps)
       .normalize()
 
     const add = event.nativeEvent.shiftKey
-    const target = hitToVoxelIndex(event.point, normal, grid, !add)
+    const target = hitToVoxelIndex(event.point, normal, entry.grid, !add)
     if (!target) return
 
-    const { ix, iy, iz } = target
-    const idx = gridIndex(ix, iy, iz, grid.size)
-    const next = grid.densities.slice()
+    const idx = gridIndex(target.ix, target.iy, target.iz, entry.grid.size)
+    const next = entry.grid.densities.slice()
     if (add) {
-      // Place a solid just outside the clicked face
       next[idx] = Math.max(voxel.isolevel + 0.5, (next[idx] ?? 0) + 1)
     } else {
-      // Carve the solid behind the clicked face
       next[idx] = Math.min(voxel.isolevel - 0.5, (next[idx] ?? 0) - 1)
     }
-    onEditDensities(next)
+    onEdit(entry.key, next)
   }
 
   return (
     <mesh
-      geometry={geometry}
-      onPointerDown={handlePointerDown}
+      geometry={entry.geometry}
+      onPointerDown={interactive ? handlePointerDown : undefined}
       castShadow={false}
       receiveShadow={false}
     >
-      <meshLambertMaterial vertexColors flatShading />
+      {interactive ? (
+        <meshLambertMaterial vertexColors flatShading />
+      ) : (
+        <meshStandardMaterial vertexColors roughness={0.82} metalness={0} side={DoubleSide} />
+      )}
     </mesh>
   )
 }
 
-function VoxelMarching({ grid, voxel }: { grid: VoxelGrid; voxel: VoxelParams }) {
-  const geometry = useMemo(
-    () => extractMarchingCubesFromGrid(grid, voxel.isolevel),
-    [grid, voxel.isolevel],
+function InfiniteVoxelWorld({ terrain, voxel, gradient }: Props) {
+  const [entries, setEntries] = useState<ChunkEntry[]>([])
+  const entriesRef = useRef<Map<string, ChunkEntry>>(new Map())
+  const lastStreamAt = useRef(0)
+  const lastCenterKey = useRef('')
+
+  const densityAt = useMemo(
+    () => createDensityFunction(terrain, voxel),
+    [terrain, voxel],
   )
 
-  useLayoutEffect(() => () => geometry.dispose(), [geometry])
+  const genKey = `${terrain.noiseId}|${terrain.zoom}|${terrain.height}|${terrain.layers}|${voxel.resolution}|${voxel.isolevel}|${voxel.bleed}|${voxel.volume}|${voxel.renderMode}|${voxel.loadRadius}|${gradient.map((s) => `${s.position}:${s.color}`).join(';')}`
+
+  // Full rebuild when density / mesh inputs change
+  useEffect(() => {
+    for (const entry of entriesRef.current.values()) disposeEntry(entry)
+    entriesRef.current.clear()
+    lastCenterKey.current = ''
+    setEntries([])
+  }, [genKey])
+
+  useFrame(({ camera }) => {
+    const now = performance.now()
+    if (now - lastStreamAt.current < STREAM_INTERVAL_MS) return
+    lastStreamAt.current = now
+
+    const center = worldToChunk(camera.position.x, camera.position.y, camera.position.z)
+    const centerKey = chunkKey(center)
+    const wanted = chunksAround(center, voxel.loadRadius)
+    const wantedKeys = new Set(wanted.map(chunkKey))
+
+    // Skip work if camera chunk unchanged and we already have exactly the wanted set
+    if (centerKey === lastCenterKey.current) {
+      let same = entriesRef.current.size === wantedKeys.size
+      if (same) {
+        for (const key of wantedKeys) {
+          if (!entriesRef.current.has(key)) {
+            same = false
+            break
+          }
+        }
+      }
+      if (same) return
+    }
+    lastCenterKey.current = centerKey
+
+    let changed = false
+    const map = entriesRef.current
+
+    for (const [key, entry] of map) {
+      if (!wantedKeys.has(key)) {
+        disposeEntry(entry)
+        map.delete(key)
+        changed = true
+      }
+    }
+
+    for (const coord of wanted) {
+      const key = chunkKey(coord)
+      if (map.has(key)) continue
+      map.set(key, buildChunkEntry(terrain, voxel, gradient, coord, densityAt))
+      changed = true
+    }
+
+    if (changed) {
+      setEntries(Array.from(map.values()))
+    }
+  })
+
+  useEffect(
+    () => () => {
+      for (const entry of entriesRef.current.values()) disposeEntry(entry)
+      entriesRef.current.clear()
+    },
+    [],
+  )
+
+  const interactive = voxel.renderMode === 'interactive'
+
+  const handleEdit = (key: string, densities: Float32Array) => {
+    const prev = entriesRef.current.get(key)
+    if (!prev) return
+    disposeEntry(prev)
+    const grid: VoxelGrid = { ...prev.grid, densities }
+    const geometry =
+      voxel.renderMode === 'marching'
+        ? extractMarchingCubesFromGrid(grid, voxel.isolevel, densityAt)
+        : buildGreedyInteractiveMesh(grid, voxel.isolevel, gradient, densityAt)
+    const next: ChunkEntry = { ...prev, grid, geometry }
+    entriesRef.current.set(key, next)
+    setEntries(Array.from(entriesRef.current.values()))
+  }
 
   return (
-    <mesh geometry={geometry}>
-      <meshStandardMaterial vertexColors roughness={0.82} metalness={0} side={DoubleSide} />
-    </mesh>
+    <>
+      {entries.map((entry) => (
+        <ChunkMesh
+          key={entry.key}
+          entry={entry}
+          interactive={interactive}
+          voxel={voxel}
+          onEdit={handleEdit}
+        />
+      ))}
+    </>
   )
 }
 
 export default function VoxelScene({ terrain, voxel, gradient }: Props) {
-  const baseGrid = useBaseVoxelGrid(terrain, voxel)
-  const [densities, setDensities] = useState(() => baseGrid.densities.slice())
-
-  useEffect(() => {
-    setDensities(baseGrid.densities.slice())
-  }, [baseGrid])
-
-  const liveGrid = useMemo<VoxelGrid>(
-    () => ({
-      size: baseGrid.size,
-      half: baseGrid.half,
-      cellSize: baseGrid.cellSize,
-      densities,
-    }),
-    [baseGrid.size, baseGrid.half, baseGrid.cellSize, densities],
-  )
-
   const interactive = voxel.renderMode === 'interactive'
 
   return (
@@ -142,23 +233,14 @@ export default function VoxelScene({ terrain, voxel, gradient }: Props) {
           <directionalLight position={[-3, 1, -2]} intensity={0.25} />
         </>
       )}
-      {interactive ? (
-        <VoxelInteractive
-          grid={liveGrid}
-          voxel={voxel}
-          gradient={gradient}
-          onEditDensities={(next) => setDensities(new Float32Array(next))}
-        />
-      ) : (
-        <VoxelMarching grid={liveGrid} voxel={voxel} />
-      )}
+      <InfiniteVoxelWorld terrain={terrain} voxel={voxel} gradient={gradient} />
       <OrbitControls
         makeDefault
         enableDamping
         dampingFactor={0.08}
         enablePan
         minDistance={1.4}
-        maxDistance={14}
+        maxDistance={80}
       />
     </Canvas>
   )
