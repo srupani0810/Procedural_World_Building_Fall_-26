@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import {
   defaultHeightGradient,
   gradientCss,
@@ -91,6 +92,7 @@ export default function GradientEditor({ stops, onChange }: Props) {
                 max={1}
                 step={0.01}
                 value={stop.position}
+                style={{ '--fill': `${stop.position * 100}%` } as CSSProperties}
                 onChange={(event) =>
                   updateStop(stop.id, { position: Number(event.target.value) })
                 }

@@ -1,20 +1,22 @@
 :root {
-  --void: #0a0a0a;
-  --panel: #141414;
-  --inset: #1c1c1c;
-  --rule: #2e2e2e;
-  --text: #c4c4c4;
-  --text-dim: #7a7a7a;
-  --text-mute: #525252;
+  --void: #050505;
+  --panel: #0c0c0c;
+  --inset: #141414;
+  --track: #1a1a1a;
+  --rule: #2a2a2a;
+  --text: #e8e8e8;
+  --text-dim: #a0a0a0;
+  --text-mute: #6a6a6a;
   --highlight: #ff1a1a;
-  --highlight-dim: #ff1a1a40;
+  --highlight-dim: #ff1a1a55;
+  --highlight-deep: #b30000;
 
-  --font: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --font: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --fs-micro: 9px;
-  --fs-ui: 10px;
-  --fs-title: 12px;
+  --fs-ui: 11px;
+  --fs-title: 13px;
   --space: 4px;
-  --radius: 0px;
+  --radius: 2px;
   --rule-w: 1px;
 
   font-family: var(--font);
@@ -45,4 +47,5 @@ body,
 
 body {
   overflow: hidden;
+  font-family: var(--font);
 }

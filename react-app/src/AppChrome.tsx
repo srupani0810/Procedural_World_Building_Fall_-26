@@ -2,6 +2,7 @@ import type { RefObject } from 'react'
 import { NOISE_OPTIONS, getNoiseOption } from './terrainParams.ts'
 import type { NoiseId, TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import type { ErosionParams } from './erosion.ts'
+import { ChromeSection } from './ChromeSection.tsx'
 import GradientEditor from './GradientEditor.tsx'
 import type { GradientStop } from './heightGradient.ts'
 import HeightMapView from './HeightMapView.tsx'
@@ -127,8 +128,7 @@ export default function AppChrome({
 
         {showVoxels ? (
           <>
-            <section className="chrome-group">
-              <h3>Voxel world</h3>
+            <ChromeSection title="Voxel world" defaultOpen>
               <p className="chrome-hint">
                 Infinite heightfield (same noise as 3D) streamed as chunks around the camera.
                 Pan / orbit to load new chunks. Interactive: click to remove, shift-click to add.
@@ -178,10 +178,9 @@ export default function AppChrome({
                 display={voxelParams.bleed.toFixed(2)}
                 onChange={(bleed) => onVoxelChange({ bleed })}
               />
-            </section>
+            </ChromeSection>
 
-            <section className="chrome-group">
-              <h3>Meshing</h3>
+            <ChromeSection title="Meshing">
               <label className="chrome-field">
                 <span className="chrome-slider-row">
                   <span>Mode</span>
@@ -216,23 +215,21 @@ export default function AppChrome({
               >
                 Reset voxels
               </button>
-            </section>
+            </ChromeSection>
 
-            <section className="chrome-group">
-              <h3>Height gradient</h3>
+            <ChromeSection title="Height gradient">
               <p className="chrome-hint">
                 Colors Interactive voxel faces by height. Add stops (0 = lowest, 1 = highest);
                 the mesh updates live.
               </p>
               <GradientEditor stops={heightGradient} onChange={onHeightGradientChange} />
-            </section>
+            </ChromeSection>
           </>
         ) : null}
 
         {showSim ? (
           <>
-            <section className="chrome-group">
-              <h3>Hydraulic</h3>
+            <ChromeSection title="Hydraulic" defaultOpen>
               <div className="chrome-actions">
                 <button type="button" className="chrome-reset" onClick={onStart} disabled={running}>
                   Start
@@ -245,10 +242,9 @@ export default function AppChrome({
                 Reset
               </button>
               <p className="chrome-hint">Reset rebuilds the map from the current noise field.</p>
-            </section>
+            </ChromeSection>
 
-            <section className="chrome-group">
-              <h3>Droplet</h3>
+            <ChromeSection title="Droplet">
               <Slider
                 label="Droplets"
                 value={erosion.droplets}
@@ -285,10 +281,9 @@ export default function AppChrome({
                 display={erosion.gravity.toFixed(1)}
                 onChange={(gravity) => onErosion({ gravity })}
               />
-            </section>
+            </ChromeSection>
 
-            <section className="chrome-group">
-              <h3>Sediment</h3>
+            <ChromeSection title="Sediment">
               <Slider
                 label="Capacity"
                 value={erosion.capacity}
@@ -343,10 +338,9 @@ export default function AppChrome({
                 display={String(Math.round(erosion.radius))}
                 onChange={(radius) => onErosion({ radius })}
               />
-            </section>
+            </ChromeSection>
 
-            <section className="chrome-group">
-              <h3>Map</h3>
+            <ChromeSection title="Map">
               <HeightMapView
                 mapRef={mapRef}
                 size={mapSize}
@@ -355,12 +349,11 @@ export default function AppChrome({
                 revision={mapRevision}
                 className="noise-preview"
               />
-            </section>
+            </ChromeSection>
           </>
         ) : (
           <>
-            <section className="chrome-group">
-              <h3>Noise</h3>
+            <ChromeSection title="Noise" defaultOpen>
               <label className="chrome-field">
                 <span className="chrome-slider-row">
                   <span>Type</span>
@@ -390,10 +383,9 @@ export default function AppChrome({
                   })
                 }
               />
-            </section>
+            </ChromeSection>
 
-            <section className="chrome-group">
-              <h3>Field</h3>
+            <ChromeSection title="Field">
               <Slider
                 label="Zoom"
                 value={params.zoom}
@@ -430,12 +422,11 @@ export default function AppChrome({
                 display={String(Math.round(params.detail))}
                 onChange={(detail) => onChange({ detail })}
               />
-            </section>
+            </ChromeSection>
 
-            <section className="chrome-group">
-              <h3>Raw 2D</h3>
+            <ChromeSection title="Raw 2D">
               <NoiseMap params={params} resolution={96} className="noise-preview" />
-            </section>
+            </ChromeSection>
           </>
         )}
       </aside>
