@@ -200,13 +200,14 @@ export default function AppChrome({
               defaultOpen
             >
               <p className="chrome-hint">
-                Noise sculpts a flat ground plane. The world starts empty of blocks — click the
-                ground or a voxel face to add; hold (~400ms) to remove. Drag to orbit.
+                Orbit: light haze only at the field rim. Jump In: stronger endless horizon fog.
+                Density thickens the walk fade. Click ground or a face to add; hold (~400ms) to
+                remove.
               </p>
               <Slider
                 label="Fog density"
                 value={epParams.fogDensity}
-                min={0}
+                min={0.02}
                 max={0.15}
                 step={0.001}
                 display={epParams.fogDensity.toFixed(3)}
@@ -289,12 +290,15 @@ export default function AppChrome({
               <Slider
                 label="Load radius"
                 value={epVoxel.loadRadius}
-                min={0}
+                min={1}
                 max={4}
                 step={1}
                 display={`${Math.round(epVoxel.loadRadius)} chunk`}
                 onChange={(loadRadius) => onEpVoxelChange({ loadRadius })}
               />
+              <p className="chrome-hint">
+                Voxel edit radius around the camera. Ground streaming follows fog independently.
+              </p>
               <Slider
                 label="Isolevel"
                 value={epVoxel.isolevel}

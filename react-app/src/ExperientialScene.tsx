@@ -1,19 +1,12 @@
 import { OrbitControls } from '@react-three/drei'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
   BufferGeometry,
   Color,
   DoubleSide,
   Float32BufferAttribute,
-  FogExp2,
+  Fog,
   LineBasicMaterial,
   MeshLambertMaterial,
   PlaneGeometry,
@@ -28,6 +21,9 @@ import {
   EP_SKY_COLOR,
   EP_TOWN_GRADIENT,
   EP_WATER_COLOR,
+  epFogFar,
+  epFogNear,
+  epFogReach,
 } from './epParams.ts'
 import { createEpMaterial } from './epMaterial.ts'
 import type { GradientStop } from './heightGradient.ts'
@@ -64,8 +60,8 @@ const STREAM_INTERVAL_MS = 120
 const HOLD_DELETE_MS = 400
 const TAP_MAX_MS = 220
 const DRAG_CANCEL_PX = 6
-/** World extent of the noise-shaped ground plane (voxels stream around the camera on top). */
-const GROUND_SIZE = 48
+/** Remesh the follow-camera ground when the camera drifts this far (XZ). */
+const GROUND_REANCHOR = 8
 const EP_MESH_GRADIENT: GradientStop[] = EP_TOWN_GRADIENT.map((stop) => ({ ...stop }))
 
 function disposeEntry(entry: ChunkEntry) {
@@ -119,90 +115,187 @@ function buildEmptyEpChunk(
   return { key: chunkKey(coord), coord, grid, geometry }
 }
 
-function FogController({ density, color }: { density: number; color: string }) {
+function FogController({
+  density,
+  color,
+  firstPerson,
+}: {
+  density: number
+  color: string
+  firstPerson: boolean
+}) {
   const { scene } = useThree()
+  // Mutate in place — recreating/nulling fog each mode tweak can hitch the GL frame
+  // and fight OrbitControls mid-gesture.
   useEffect(() => {
-    const fog = new FogExp2(new Color(color), density)
-    scene.fog = fog
+    const near = epFogNear(firstPerson)
+    const far = epFogFar(density, firstPerson)
+    const existing = scene.fog
+    if (existing && (existing as Fog).isFog) {
+      const fog = existing as Fog
+      fog.color.set(color)
+      fog.near = near
+      fog.far = far
+    } else {
+      scene.fog = new Fog(new Color(color), near, far)
+    }
     return () => {
       scene.fog = null
     }
-  }, [scene, density, color])
+  }, [scene, density, color, firstPerson])
   return null
 }
 
-function SoftWater() {
+/** Water sheet that follows the camera so its rim stays behind fog. */
+function SoftWater({ fogDensity }: { fogDensity: number }) {
+  const meshRef = useRef<Mesh>(null)
+  const reach = epFogReach(fogDensity)
+  // Cover past fog horizon; cap so one plane never dominates GPU fill.
+  const size = Math.min(160, Math.max(72, reach * 2.4))
   const mat = useMemo(
     () =>
       new MeshLambertMaterial({
         color: EP_WATER_COLOR,
-        transparent: true,
-        opacity: 0.88,
-        depthWrite: false,
+        fog: true,
       }),
     [],
   )
   useEffect(() => () => mat.dispose(), [mat])
+  useFrame(({ camera }) => {
+    const mesh = meshRef.current
+    if (!mesh) return
+    mesh.position.x = camera.position.x
+    mesh.position.z = camera.position.z
+  })
   return (
     <mesh
+      ref={meshRef}
       rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, -0.35, 0]}
+      position={[0, -0.55, 0]}
       material={mat}
+      frustumCulled={false}
+      renderOrder={-1}
       raycast={() => null}
     >
-      <planeGeometry args={[GROUND_SIZE * 1.4, GROUND_SIZE * 1.4]} />
+      <planeGeometry args={[size, size]} />
     </mesh>
   )
 }
 
-/** Noise-shaped flat ground — walkable canvas; clicks place the first voxels. */
-function NoiseGround({
+function buildFollowGroundGeometry(
+  ox: number,
+  oz: number,
+  size: number,
+  sample: (x: number, z: number) => number,
+  heightScale: number,
+  segments: number,
+): BufferGeometry {
+  const geo = new PlaneGeometry(size, size, segments, segments)
+  const positions = geo.attributes.position
+  const colors = new Float32Array(positions.count * 3)
+
+  for (let i = 0; i < positions.count; i++) {
+    // Plane local XY → world XZ after mesh rotation
+    const lx = positions.getX(i)
+    const ly = positions.getY(i)
+    // After mesh rotation -PI/2 around X: local (lx, ly, h) → world (ox+lx, h, oz-ly)
+    const wx = ox + lx
+    const wz = oz - ly
+    const n = sample(wx, wz)
+    // Keep valleys above the water sheet so dark water never reads as mesh holes.
+    positions.setZ(i, n * heightScale + 0.25)
+
+    const t = (n + 1) * 0.5
+    // Lift albedo so ground still reads through linear fog haze (fog color ≈ sky).
+    const shade = 0.38 + t * 0.52
+    colors[i * 3] = shade
+    colors[i * 3 + 1] = shade + 0.03
+    colors[i * 3 + 2] = shade + 0.06
+  }
+
+  positions.needsUpdate = true
+  geo.setAttribute('color', new Float32BufferAttribute(colors, 3))
+  geo.computeVertexNormals()
+  geo.computeBoundingBox()
+  geo.computeBoundingSphere()
+  return geo
+}
+
+/**
+ * One continuous noise heightfield that follows the camera and remeshes when you
+ * walk far enough. Sized past fog reach so the rim stays hidden in haze —
+ * no tiled seams, no frustum holes from many small meshes.
+ */
+function StreamedNoiseGround({
   terrain,
+  fogDensity,
+  firstPerson,
   editEnabled,
   onTapPlace,
 }: {
   terrain: TerrainParams
+  fogDensity: number
+  firstPerson: boolean
   editEnabled: boolean
   onTapPlace: (wx: number, wy: number, wz: number) => void
 }) {
-  const segments = Math.max(24, Math.round(terrain.detail))
-  const geometry = useMemo(
-    () => new PlaneGeometry(GROUND_SIZE, GROUND_SIZE, segments, segments),
-    [segments],
+  const meshRef = useRef<Mesh>(null)
+  const geoRef = useRef<BufferGeometry | null>(null)
+  const groundRef = useRef<{ geometry: BufferGeometry; ox: number; oz: number } | null>(
+    null,
   )
-  const geometryRef = useRef(geometry)
-  geometryRef.current = geometry
+  const [ground, setGround] = useState<{
+    geometry: BufferGeometry
+    ox: number
+    oz: number
+  } | null>(null)
+  const lastMeshAt = useRef(0)
+  const firstPersonRef = useRef(firstPerson)
+  firstPersonRef.current = firstPerson
+  const { camera: cam } = useThree()
 
   const sample = useMemo(() => createNoise(terrain), [terrain])
   const heightScale = terrainAmplitude(terrain)
+  const segments = Math.max(48, Math.round(terrain.detail * 1.25))
+  const genKey = `${terrain.noiseId}|${terrain.frequency}|${terrain.amplitude}|${terrain.octaves}|${terrain.persistence}|${segments}|${heightScale}|${fogDensity}`
 
-  useLayoutEffect(() => {
-    const geo = geometryRef.current
-    const positions = geo.attributes.position
-    const colors = new Float32Array(positions.count * 3)
+  const remesh = (ox: number, oz: number) => {
+    const reach = epFogReach(fogDensity)
+    const size = Math.min(160, Math.max(96, reach * 2.6))
+    const next = buildFollowGroundGeometry(ox, oz, size, sample, heightScale, segments)
+    geoRef.current?.dispose()
+    geoRef.current = next
+    const payload = { geometry: next, ox, oz }
+    groundRef.current = payload
+    setGround(payload)
+  }
 
-    for (let i = 0; i < positions.count; i++) {
-      // PlaneGeometry lies in XY before group rotation; X/Y → world X/Z
-      const x = positions.getX(i)
-      const z = positions.getY(i)
-      const n = sample(x, z)
-      const h = n * heightScale
-      positions.setZ(i, h)
-
-      // Dark charcoal height tint (EP palette)
-      const t = (n + 1) * 0.5
-      const shade = 0.12 + t * 0.35
-      colors[i * 3] = shade
-      colors[i * 3 + 1] = shade + 0.02
-      colors[i * 3 + 2] = shade + 0.04
+  useEffect(() => {
+    // Orbit: anchor at origin so orbiting never remeshes mid-drag.
+    // Jump In: re-anchor under the camera when entering walk mode.
+    if (firstPerson) remesh(cam.position.x, cam.position.z)
+    else remesh(0, 0)
+    return () => {
+      geoRef.current?.dispose()
+      geoRef.current = null
+      groundRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- remesh on terrain/fog/mode
+  }, [genKey, sample, heightScale, segments, fogDensity, firstPerson])
 
-    positions.needsUpdate = true
-    geo.setAttribute('color', new Float32BufferAttribute(colors, 3))
-    geo.computeVertexNormals()
-  }, [terrain, sample, heightScale])
-
-  useEffect(() => () => geometry.dispose(), [geometry])
+  useFrame(({ camera }) => {
+    // Only re-anchor while walking — orbit remeshes fight OrbitControls gestures.
+    if (!firstPersonRef.current) return
+    const g = groundRef.current
+    if (!g) return
+    const now = performance.now()
+    if (now - lastMeshAt.current < STREAM_INTERVAL_MS) return
+    const dx = camera.position.x - g.ox
+    const dz = camera.position.z - g.oz
+    if (dx * dx + dz * dz < GROUND_REANCHOR * GROUND_REANCHOR) return
+    lastMeshAt.current = now
+    remesh(camera.position.x, camera.position.z)
+  })
 
   const pointerRef = useRef<{
     startedAt: number
@@ -244,6 +337,7 @@ function NoiseGround({
   const onPointerDown = (event: ThreeEvent<PointerEvent>) => {
     if (!editEnabled || event.nativeEvent.button !== 0) return
     if (document.pointerLockElement) return
+    // Do not stopPropagation — OrbitControls owns the native pointer/wheel stream.
     pointerRef.current = {
       startedAt: performance.now(),
       pointerId: event.nativeEvent.pointerId,
@@ -254,12 +348,19 @@ function NoiseGround({
     }
   }
 
+  if (!ground) return null
+
   return (
-    <group rotation={[-Math.PI / 2, 0, 0]}>
-      <mesh geometry={geometry} onPointerDown={editEnabled ? onPointerDown : undefined}>
-        <meshLambertMaterial vertexColors flatShading={false} />
-      </mesh>
-    </group>
+    <mesh
+      ref={meshRef}
+      geometry={ground.geometry}
+      position={[ground.ox, 0, ground.oz]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      frustumCulled={false}
+      onPointerDown={editEnabled ? onPointerDown : undefined}
+    >
+      <meshLambertMaterial vertexColors flatShading={false} fog side={DoubleSide} />
+    </mesh>
   )
 }
 
@@ -372,6 +473,7 @@ function EpEditMesh({
   const onPointerDown = (event: ThreeEvent<PointerEvent>) => {
     if (!enabled || !event.face || event.nativeEvent.button !== 0) return
     if (document.pointerLockElement) return
+    // Do not stopPropagation — OrbitControls needs the native pointer stream.
 
     const normal = event.face.normal
       .clone()
@@ -455,7 +557,6 @@ function PlayerVoxelWorld({
   gradient,
   grain,
   editEnabled,
-  onEntries,
   groundPlaceRef,
 }: {
   terrain: TerrainParams
@@ -463,7 +564,6 @@ function PlayerVoxelWorld({
   gradient: GradientStop[]
   grain: number
   editEnabled: boolean
-  onEntries: (entries: ChunkEntry[]) => void
   groundPlaceRef: MutableRefObject<((wx: number, wy: number, wz: number) => void) | null>
 }) {
   const [entries, setEntries] = useState<ChunkEntry[]>([])
@@ -513,8 +613,7 @@ function PlayerVoxelWorld({
     entriesRef.current.clear()
     lastCenterKey.current = ''
     setEntries([])
-    onEntries([])
-  }, [voxelGenKey, onEntries])
+  }, [voxelGenKey])
 
   const remeshEntry = (prev: ChunkEntry, densities: Float32Array) => {
     disposeEntry(prev)
@@ -529,9 +628,7 @@ function PlayerVoxelWorld({
   }
 
   const publish = () => {
-    const list = Array.from(entriesRef.current.values())
-    setEntries(list)
-    onEntries(list)
+    setEntries(Array.from(entriesRef.current.values()))
   }
 
   const ensureChunk = (coord: ChunkCoord) => {
@@ -593,8 +690,12 @@ function PlayerVoxelWorld({
     lastStreamAt.current = now
 
     const center = worldToChunk(camera.position.x, camera.position.y, camera.position.z)
-    const centerKey = chunkKey(center)
-    const wanted = chunksAround(center, voxel.loadRadius)
+    // Player voxels stay on the user load radius only — fog horizon is covered by
+    // streamed ground (2D). Expanding 3D Chebyshev radius to fog reach was
+    // (2r+1)³ ≈ 30k chunks and froze/blacked the canvas (VOXEL_CHUNK_SIZE=4).
+    const loadR = Math.max(1, Math.min(4, Math.round(voxel.loadRadius)))
+    const centerKey = `${chunkKey(center)}|${loadR}`
+    const wanted = chunksAround(center, loadR)
     const wantedKeys = new Set(wanted.map(chunkKey))
 
     if (centerKey === lastCenterKey.current) {
@@ -657,6 +758,8 @@ function PlayerVoxelWorld({
           onHoldDelete={(key, ix, iy, iz) => editCell(key, ix, iy, iz, 'remove')}
         />
       ))}
+      {/* Scaffold stays here so chunk stream re-renders don't remount OrbitControls. */}
+      <TownScaffoldDecor entries={entries} isolevel={voxel.isolevel} />
     </>
   )
 }
@@ -759,10 +862,6 @@ export default function ExperientialScene({
   firstPerson,
   onExitFirstPerson,
 }: Props) {
-  const [entries, setEntries] = useState<ChunkEntry[]>([])
-  const onEntries = useMemo(() => {
-    return (list: ChunkEntry[]) => setEntries(list)
-  }, [])
   const groundPlaceRef = useRef<((wx: number, wy: number, wz: number) => void) | null>(null)
 
   const onGroundTap = useMemo(() => {
@@ -774,41 +873,46 @@ export default function ExperientialScene({
   return (
     <Canvas
       className="scene-canvas"
-      camera={{ position: [8, 5, 10], fov: 48, near: 0.05, far: 220 }}
+      camera={{ position: [8, 5, 10], fov: 48, near: 0.05, far: 400 }}
       dpr={[1, 2]}
       gl={{ antialias: true }}
     >
       <color attach="background" args={[EP_SKY_COLOR]} />
-      <FogController density={ep.fogDensity} color={EP_FOG_COLOR} />
-      <ambientLight intensity={0.22} color="#9aa1ab" />
-      <hemisphereLight args={['#2a3038', '#121418', 0.35]} />
-      <directionalLight position={[6, 10, 3]} intensity={0.55} color="#d0d4da" />
-      <directionalLight position={[-4, 3, -5]} intensity={0.12} color="#6a7380" />
-      <SoftWater />
-      <NoiseGround
+      <FogController
+        density={ep.fogDensity}
+        color={EP_FOG_COLOR}
+        firstPerson={firstPerson}
+      />
+      <ambientLight intensity={0.55} color="#b4bcc6" />
+      <hemisphereLight args={['#4a5560', '#1a1e24', 0.7]} />
+      <directionalLight position={[6, 10, 3]} intensity={1.05} color="#e0e4ea" />
+      <directionalLight position={[-4, 3, -5]} intensity={0.3} color="#8a949e" />
+      <StreamedNoiseGround
         terrain={terrain}
+        fogDensity={ep.fogDensity}
+        firstPerson={firstPerson}
         editEnabled={!firstPerson}
         onTapPlace={onGroundTap}
       />
+      <SoftWater fogDensity={ep.fogDensity} />
       <PlayerVoxelWorld
         terrain={terrain}
         voxel={voxel}
         gradient={EP_MESH_GRADIENT}
         grain={ep.glitchIntensity}
         editEnabled={!firstPerson}
-        onEntries={onEntries}
         groundPlaceRef={groundPlaceRef}
       />
-      <TownScaffoldDecor entries={entries} isolevel={voxel.isolevel} />
       <OrbitControls
         makeDefault
         enabled={!firstPerson}
         enableDamping
         dampingFactor={0.08}
         enablePan
-        target={[0, 0, 0]}
+        enableZoom
+        // Do not pass target={[…]} — fresh arrays each render reset the orbit focus.
         minDistance={1.4}
-        maxDistance={80}
+        maxDistance={140}
       />
       <FirstPersonControls
         enabled={firstPerson}

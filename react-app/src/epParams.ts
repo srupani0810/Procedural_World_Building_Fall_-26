@@ -10,7 +10,11 @@ export type EpParams = {
 }
 
 export const defaultEpParams: EpParams = {
-  fogDensity: 0.04,
+  /**
+   * Slider thickness for linear Fog: higher → opaque sooner past EP_FOG_NEAR.
+   * Near field stays clear; density only tightens the horizon fade.
+   */
+  fogDensity: 0.045,
   glitchIntensity: 0.65,
 }
 
@@ -34,7 +38,8 @@ export function createDefaultEpVoxel(): VoxelParams {
     ...defaultVoxelParams,
     renderMode: 'interactive',
     resolution: 16,
-    loadRadius: 1,
+    /** Keep modest — 3D Chebyshev cost is (2r+1)³; endless feel comes from ground + fog. */
+    loadRadius: 2,
     isolevel: 0,
     bleed: 0.12,
     volume: 0.15,
@@ -42,11 +47,54 @@ export function createDefaultEpVoxel(): VoxelParams {
   }
 }
 
-/** Dark mist / clear-color — Voxel Cloud atmosphere. */
-export const EP_FOG_COLOR = '#14161a'
-
-/** Near-black sky behind the mist. */
+/** Near-black sky / clear-color — also used for fog so haze has no color seam. */
 export const EP_SKY_COLOR = '#0c0d10'
+
+/** Fog matches background exactly (seamless fade into haze). */
+export const EP_FOG_COLOR = EP_SKY_COLOR
+
+/**
+ * First-person (Jump In): fog starts at this distance — nearby ground stays clear,
+ * horizon softens into an endless haze as you walk.
+ */
+export const EP_FOG_NEAR_FP = 22
+
+/**
+ * Orbit / overview: clear through near–mid range; haze only near the field rim.
+ * Tuned to sit just inside a ~80-unit ground half-extent so the edge soft-fades.
+ */
+export const EP_FOG_NEAR_ORBIT = 54
+
+/** @deprecated use EP_FOG_NEAR_FP — kept for any stray imports */
+export const EP_FOG_NEAR = EP_FOG_NEAR_FP
+
+export function epFogNear(firstPerson: boolean) {
+  return firstPerson ? EP_FOG_NEAR_FP : EP_FOG_NEAR_ORBIT
+}
+
+/**
+ * Linear Fog far (full opacity).
+ * FP: higher `fogDensity` pulls the opaque horizon in (endless-walk haze).
+ * Orbit: light rim fade at the loaded field edge (near–mid stay readable).
+ */
+export function epFogFar(fogDensity: number, firstPerson = true) {
+  const minD = 0.02
+  const maxD = 0.15
+  const t = Math.min(1, Math.max(0, (fogDensity - minD) / (maxD - minD)))
+  if (!firstPerson) {
+    // Soft boundary haze only — density gently pulls the rim in (82 → 70)
+    return 82 - t * 12
+  }
+  // density 0.02 → far 110; 0.15 → far ~46 (thick walk horizon, still past near)
+  const farMin = EP_FOG_NEAR_FP + 24
+  const farMax = 110
+  return farMax + (farMin - farMax) * t
+}
+
+/** Ground / water half-extent budget — past FP fog so Jump In never reveals a rim. */
+export function epFogReach(fogDensity: number) {
+  return Math.max(epFogFar(fogDensity, true), epFogFar(fogDensity, false) + 8)
+}
 
 /** Dark water under the blocky islands. */
 export const EP_WATER_COLOR = '#1a1e24'

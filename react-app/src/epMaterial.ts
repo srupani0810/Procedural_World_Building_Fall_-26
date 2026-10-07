@@ -1,8 +1,16 @@
-import { Color, DoubleSide, ShaderMaterial, Vector3 } from 'three'
+import {
+  Color,
+  DoubleSide,
+  ShaderMaterial,
+  UniformsLib,
+  UniformsUtils,
+  Vector3,
+} from 'three'
 
 /**
  * EP-only material — kept out of shaderStudies so the Playground does not share
  * Shader tab study materials or uniforms.
+ * Fog chunks + UniformsLib.fog so voxels fade into scene Fog (linear near/far).
  */
 const EP_VERT = /* glsl */ `
 attribute vec3 color;
@@ -11,6 +19,8 @@ varying vec3 vNormal;
 varying vec3 vViewNormal;
 varying vec3 vWorldPos;
 varying vec3 vColor;
+
+#include <fog_pars_vertex>
 
 vec3 safeNormal(vec3 n) {
   float len = length(n);
@@ -24,7 +34,9 @@ void main() {
   vWorldPos = world.xyz;
   vNormal = normalize(mat3(modelMatrix) * n);
   vViewNormal = normalize(normalMatrix * n);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
 }
 `
 
@@ -38,6 +50,8 @@ varying vec3 vNormal;
 varying vec3 vViewNormal;
 varying vec3 vWorldPos;
 varying vec3 vColor;
+
+#include <fog_pars_fragment>
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -69,21 +83,26 @@ void main() {
   lit = mix(vec3(0.08, 0.09, 0.11), lit, 0.45 + 0.55 * haze);
 
   gl_FragColor = vec4(clamp(lit, 0.0, 1.0), 1.0);
+  #include <fog_fragment>
 }
 `
 
 export function createEpMaterial(options?: { grain?: number }): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uLightDir: { value: new Vector3(0.45, 0.9, 0.3).normalize() },
-      uColorLow: { value: new Color('#1a1c20') },
-      uColorHigh: { value: new Color('#9aa1ab') },
-      uGrain: { value: options?.grain ?? 0.65 },
-    },
+    uniforms: UniformsUtils.merge([
+      UniformsLib.fog,
+      {
+        uTime: { value: 0 },
+        uLightDir: { value: new Vector3(0.45, 0.9, 0.3).normalize() },
+        uColorLow: { value: new Color('#1a1c20') },
+        uColorHigh: { value: new Color('#9aa1ab') },
+        uGrain: { value: options?.grain ?? 0.65 },
+      },
+    ]),
     vertexShader: EP_VERT,
     fragmentShader: EP_FRAG,
     side: DoubleSide,
     toneMapped: false,
+    fog: true,
   })
 }

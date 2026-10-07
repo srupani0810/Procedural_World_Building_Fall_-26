@@ -28,22 +28,40 @@ export function FirstPersonControls({ enabled, terrain, onExit }: FirstPersonCon
   const forward = useRef(new Vector3())
   const right = useRef(new Vector3())
   const placed = useRef(false)
+  const wasEnabled = useRef(false)
 
   const sample = useMemo(() => createNoise(terrain), [terrain])
   const heightScale = terrainAmplitude(terrain)
   const surfaceAt = (x: number, z: number) => sample(x, z) * heightScale
 
-  // Enter: stand on terrain at the orbit focus (view center); exit cleans up pointer lock
+  // Enter: stand on terrain at the orbit focus; exit once resyncs OrbitControls (not every orbit frame).
   useEffect(() => {
     if (!enabled) {
+      const leavingWalk = wasEnabled.current
+      wasEnabled.current = false
       placed.current = false
       dragging.current = false
       if (document.pointerLockElement === gl.domElement) {
         document.exitPointerLock()
       }
+      if (leavingWalk) {
+        // Stale spherical state would otherwise snap the camera when orbit re-enables.
+        const orbit = controls as OrbitControlsImpl | null
+        if (orbit) {
+          const dir = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+          dir.y = 0
+          if (dir.lengthSq() > 1e-6) dir.normalize()
+          else dir.set(0, 0, -1)
+          const tx = camera.position.x + dir.x * 6
+          const tz = camera.position.z + dir.z * 6
+          orbit.target.set(tx, surfaceAt(tx, tz), tz)
+          orbit.update()
+        }
+      }
       return
     }
 
+    wasEnabled.current = true
     if (placed.current) return
     placed.current = true
 
