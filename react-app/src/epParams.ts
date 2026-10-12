@@ -57,7 +57,7 @@ export const EP_FOG_COLOR = EP_SKY_COLOR
  * First-person (Jump In): fog starts at this distance — nearby ground stays clear,
  * horizon softens into an endless haze as you walk.
  */
-export const EP_FOG_NEAR_FP = 22
+export const EP_FOG_NEAR_FP = 12
 
 /**
  * Orbit / overview: clear through near–mid range; haze only near the field rim.
@@ -82,12 +82,13 @@ export function epFogFar(fogDensity: number, firstPerson = true) {
   const maxD = 0.15
   const t = Math.min(1, Math.max(0, (fogDensity - minD) / (maxD - minD)))
   if (!firstPerson) {
-    // Soft boundary haze only — density gently pulls the rim in (82 → 70)
+    // Soft boundary haze only — density gently pulls the rim in (82 → 70).
+    // Bird’s-eye zoom shifts this band outward in FogController so the field stays clear.
     return 82 - t * 12
   }
-  // density 0.02 → far 110; 0.15 → far ~46 (thick walk horizon, still past near)
-  const farMin = EP_FOG_NEAR_FP + 24
-  const farMax = 110
+  // density 0.02 → far ~78; 0.15 → far ~28 (horizon fades into sky while walking)
+  const farMin = EP_FOG_NEAR_FP + 16
+  const farMax = 78
   return farMax + (farMin - farMax) * t
 }
 

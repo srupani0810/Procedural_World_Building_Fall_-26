@@ -10,6 +10,7 @@ import {
   LineBasicMaterial,
   MeshLambertMaterial,
   PlaneGeometry,
+  Vector3,
   type Mesh,
   type ShaderMaterial,
 } from 'three'
@@ -62,6 +63,13 @@ const TAP_MAX_MS = 220
 const DRAG_CANCEL_PX = 6
 /** Remesh the follow-camera ground when the camera drifts this far (XZ). */
 const GROUND_REANCHOR = 8
+/** World size of the overview heightfield — large enough for a bird’s-eye pullback. */
+const OVERVIEW_GROUND_SIZE = 520
+/**
+ * Walk patch: small enough that segment spacing stays ~1 unit (the pre-fog
+ * GROUND_SIZE 48 / detail segments density) so noise ridges read at eye height.
+ */
+const FP_GROUND_SIZE = 96
 const EP_MESH_GRADIENT: GradientStop[] = EP_TOWN_GRADIENT.map((stop) => ({ ...stop }))
 
 function disposeEntry(entry: ChunkEntry) {
@@ -115,6 +123,8 @@ function buildEmptyEpChunk(
   return { key: chunkKey(coord), coord, grid, geometry }
 }
 
+const fogLook = new Vector3()
+
 function FogController({
   density,
   color,
@@ -124,25 +134,46 @@ function FogController({
   color: string
   firstPerson: boolean
 }) {
-  const { scene } = useThree()
-  // Mutate in place — recreating/nulling fog each mode tweak can hitch the GL frame
-  // and fight OrbitControls mid-gesture.
+  const { scene, camera } = useThree()
+  const fogRef = useRef<Fog | null>(null)
+  const firstPersonRef = useRef(firstPerson)
+  const densityRef = useRef(density)
+  const colorRef = useRef(color)
+  firstPersonRef.current = firstPerson
+  densityRef.current = density
+  colorRef.current = color
+
   useEffect(() => {
-    const near = epFogNear(firstPerson)
-    const far = epFogFar(density, firstPerson)
-    const existing = scene.fog
-    if (existing && (existing as Fog).isFog) {
-      const fog = existing as Fog
-      fog.color.set(color)
-      fog.near = near
-      fog.far = far
-    } else {
-      scene.fog = new Fog(new Color(color), near, far)
-    }
+    const fog = new Fog(new Color(color), epFogNear(firstPerson), epFogFar(density, firstPerson))
+    fogRef.current = fog
+    scene.fog = fog
     return () => {
-      scene.fog = null
+      if (scene.fog === fog) scene.fog = null
+      fogRef.current = null
     }
-  }, [scene, density, color, firstPerson])
+    // Create once — mode/density updates happen in useFrame so controls aren't reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene])
+
+  useFrame(() => {
+    const fog = fogRef.current
+    if (!fog) return
+    if (scene.fog !== fog) scene.fog = fog
+    fog.color.set(colorRef.current)
+    if (firstPersonRef.current) {
+      // Walk haze: sky-colored, starts nearby-mid, opaque at the horizon. Density pulls `far` in.
+      fog.near = epFogNear(true)
+      fog.far = Math.max(fog.near + 8, epFogFar(densityRef.current, true))
+      return
+    }
+    // Orbit: keep the field body clear even from a high bird’s-eye pullback.
+    // Shift the fade band with camera distance so only the terrain rim hazes.
+    const dist = camera.position.distanceTo(fogLook)
+    const rim = OVERVIEW_GROUND_SIZE * 0.42
+    const baseNear = epFogNear(false)
+    fog.near = Math.max(baseNear, dist * 0.9)
+    fog.far = Math.max(fog.near + 28, Math.hypot(dist * 0.92, rim))
+  })
   return null
 }
 
@@ -150,8 +181,7 @@ function FogController({
 function SoftWater({ fogDensity }: { fogDensity: number }) {
   const meshRef = useRef<Mesh>(null)
   const reach = epFogReach(fogDensity)
-  // Cover past fog horizon; cap so one plane never dominates GPU fill.
-  const size = Math.min(160, Math.max(72, reach * 2.4))
+  const size = Math.max(OVERVIEW_GROUND_SIZE, Math.min(640, reach * 2.2))
   const mat = useMemo(
     () =>
       new MeshLambertMaterial({
@@ -259,10 +289,14 @@ function StreamedNoiseGround({
   const segments = Math.max(48, Math.round(terrain.detail * 1.25))
   const genKey = `${terrain.noiseId}|${terrain.frequency}|${terrain.amplitude}|${terrain.octaves}|${terrain.persistence}|${segments}|${heightScale}|${fogDensity}`
 
-  const remesh = (ox: number, oz: number) => {
-    const reach = epFogReach(fogDensity)
-    const size = Math.min(160, Math.max(96, reach * 2.6))
-    const next = buildFollowGroundGeometry(ox, oz, size, sample, heightScale, segments)
+  const remesh = (ox: number, oz: number, walking: boolean) => {
+    // Orbit keeps the wide sheet (coarse from above). Jump In uses a dense patch
+    // so noise wavelength isn’t averaged out across huge quads.
+    const size = walking ? FP_GROUND_SIZE : OVERVIEW_GROUND_SIZE
+    const segs = walking
+      ? Math.max(72, Math.round(size))
+      : Math.max(48, Math.round(terrain.detail * 1.25))
+    const next = buildFollowGroundGeometry(ox, oz, size, sample, heightScale, segs)
     geoRef.current?.dispose()
     geoRef.current = next
     const payload = { geometry: next, ox, oz }
@@ -273,8 +307,8 @@ function StreamedNoiseGround({
   useEffect(() => {
     // Orbit: anchor at origin so orbiting never remeshes mid-drag.
     // Jump In: re-anchor under the camera when entering walk mode.
-    if (firstPerson) remesh(cam.position.x, cam.position.z)
-    else remesh(0, 0)
+    if (firstPerson) remesh(cam.position.x, cam.position.z, true)
+    else remesh(0, 0, false)
     return () => {
       geoRef.current?.dispose()
       geoRef.current = null
@@ -294,7 +328,7 @@ function StreamedNoiseGround({
     const dz = camera.position.z - g.oz
     if (dx * dx + dz * dz < GROUND_REANCHOR * GROUND_REANCHOR) return
     lastMeshAt.current = now
-    remesh(camera.position.x, camera.position.z)
+    remesh(camera.position.x, camera.position.z, true)
   })
 
   const pointerRef = useRef<{
@@ -873,7 +907,7 @@ export default function ExperientialScene({
   return (
     <Canvas
       className="scene-canvas"
-      camera={{ position: [8, 5, 10], fov: 48, near: 0.05, far: 400 }}
+      camera={{ position: [8, 5, 10], fov: 48, near: 0.05, far: 4000 }}
       dpr={[1, 2]}
       gl={{ antialias: true }}
     >
@@ -912,7 +946,8 @@ export default function ExperientialScene({
         enableZoom
         // Do not pass target={[…]} — fresh arrays each render reset the orbit focus.
         minDistance={1.4}
-        maxDistance={140}
+        maxDistance={900}
+        maxPolarAngle={Math.PI / 2.05}
       />
       <FirstPersonControls
         enabled={firstPerson}
