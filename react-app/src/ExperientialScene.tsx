@@ -27,6 +27,9 @@ import {
   epFogReach,
 } from './epParams.ts'
 import { createEpMaterial } from './epMaterial.ts'
+import { clearGrid, type GridCell, type GridLayout } from './epGrid.ts'
+import { EpGrid } from './epGrid.tsx'
+import { EpSalvageTown } from './epTown.tsx'
 import type { GradientStop } from './heightGradient.ts'
 import { createNoise, terrainAmplitude, type TerrainParams } from './terrainParams.ts'
 import { buildGreedyInteractiveMesh, hitToVoxelIndex } from './voxelGreedyMesh.ts'
@@ -48,6 +51,8 @@ type Props = {
   ep: EpParams
   firstPerson: boolean
   onExitFirstPerson: () => void
+  /** Incremented by Reset Grid. Does not touch terrain or voxels. */
+  gridReset: number
 }
 
 type ChunkEntry = {
@@ -895,12 +900,25 @@ export default function ExperientialScene({
   ep,
   firstPerson,
   onExitFirstPerson,
+  gridReset,
 }: Props) {
   const groundPlaceRef = useRef<((wx: number, wy: number, wz: number) => void) | null>(null)
+  const townCells = useRef<Map<string, GridCell>>(new Map())
+  const editBridge = useRef<(ix: number, iz: number, y: number) => void>(() => {})
+  const [claimRevision, setClaimRevision] = useState(0)
+  const gridLayout = useMemo<GridLayout>(
+    () => ({ cellSize: ep.cellSize, warp: ep.gridWarp }),
+    [ep.cellSize, ep.gridWarp],
+  )
+
+  useEffect(() => {
+    clearGrid(townCells.current)
+    setClaimRevision((value) => value + 1)
+  }, [gridReset])
 
   const onGroundTap = useMemo(() => {
-    return (wx: number, wy: number, wz: number) => {
-      groundPlaceRef.current?.(wx, wy, wz)
+    return () => {
+      // Clicks build settlement lots in EpSalvageTown, not resolution-tied voxels.
     }
   }, [])
 
@@ -936,6 +954,20 @@ export default function ExperientialScene({
         grain={ep.glitchIntensity}
         editEnabled={!firstPerson}
         groundPlaceRef={groundPlaceRef}
+      />
+      <EpGrid
+        layout={gridLayout}
+        visible={ep.gridVisible}
+        editEnabled={!firstPerson}
+        onCell={(ix, iz, y) => editBridge.current(ix, iz, y)}
+      />
+      <EpSalvageTown
+        cellsRef={townCells}
+        layout={gridLayout}
+        editEnabled={!firstPerson}
+        grain={ep.glitchIntensity}
+        claimRevision={claimRevision}
+        editBridge={editBridge}
       />
       <OrbitControls
         makeDefault

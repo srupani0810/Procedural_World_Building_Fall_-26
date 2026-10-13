@@ -45,6 +45,7 @@ type AppChromeProps = {
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
+  onResetGrid: () => void
   onStart: () => void
   onStop: () => void
   onReset: () => void
@@ -80,6 +81,7 @@ export default function AppChrome({
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
+  onResetGrid,
   onStart,
   onStop,
   onReset,
@@ -317,6 +319,46 @@ export default function AppChrome({
                 }}
               >
                 Reset EP world
+              </button>
+            </ChromeSection>
+
+            <ChromeSection
+              title="Grid"
+              tip="Wavy quad cells for click-to-build. Separate from voxel resolution."
+              defaultOpen
+            >
+              <p className="chrome-hint">
+                Invisible until toggled. Cell ids stay put when size or warp changes. Reset Grid
+                clears claimed lots only.
+              </p>
+              <Slider
+                label="Cell size"
+                value={epParams.cellSize}
+                min={1}
+                max={6}
+                step={0.05}
+                display={epParams.cellSize.toFixed(2)}
+                onChange={(cellSize) => onEpChange({ cellSize })}
+              />
+              <Slider
+                label="Grid warp"
+                value={epParams.gridWarp}
+                min={0}
+                max={1.5}
+                step={0.01}
+                display={epParams.gridWarp.toFixed(2)}
+                onChange={(gridWarp) => onEpChange({ gridWarp })}
+              />
+              <label className="chrome-check">
+                <span>Grid visibility</span>
+                <input
+                  type="checkbox"
+                  checked={epParams.gridVisible}
+                  onChange={(event) => onEpChange({ gridVisible: event.target.checked })}
+                />
+              </label>
+              <button type="button" className="chrome-reset chrome-reset-full" onClick={onResetGrid}>
+                Reset Grid
               </button>
             </ChromeSection>
 

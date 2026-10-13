@@ -36,6 +36,7 @@ function App() {
   const [epTerrain, setEpTerrain] = useState<TerrainParams>(() => createDefaultEpTerrain())
   const [epVoxel, setEpVoxel] = useState<VoxelParams>(() => createDefaultEpVoxel())
   const [epFirstPerson, setEpFirstPerson] = useState(false)
+  const [gridReset, setGridReset] = useState(0)
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -111,6 +112,7 @@ function App() {
             ep={epParams}
             firstPerson={epFirstPerson}
             onExitFirstPerson={() => setEpFirstPerson(false)}
+            gridReset={gridReset}
           />
         ) : showSim ? (
           <HeightMapView
@@ -166,6 +168,7 @@ function App() {
           if (mode === 'ep') setEpFirstPerson(false)
           else setFirstPerson(false)
         }}
+        onResetGrid={() => setGridReset((value) => value + 1)}
         onStart={() => {
           ensureMap()
           setRunning(true)

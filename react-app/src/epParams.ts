@@ -7,6 +7,12 @@ export type EpParams = {
   fogDensity: number
   /** Filigree / porous grain on the EP material (0–2). */
   glitchIntensity: number
+  /** Settlement quad spacing. Independent of voxel resolution. */
+  cellSize: number
+  /** Corner noise strength. 0 keeps the lattice rigid. */
+  gridWarp: number
+  /** Debug lines for the settlement grid. */
+  gridVisible: boolean
 }
 
 export const defaultEpParams: EpParams = {
@@ -16,6 +22,9 @@ export const defaultEpParams: EpParams = {
    */
   fogDensity: 0.045,
   glitchIntensity: 0.65,
+  cellSize: 1.85,
+  gridWarp: 0.55,
+  gridVisible: false,
 }
 
 /**
