@@ -16,13 +16,13 @@ import {
   cellCorners,
   gridKey,
   neighborCell,
+  pickGrowthCell,
   type GridCell,
   type GridLayout,
   type XZ,
 } from './epGrid.ts'
 
 export const TOWN_STORY = 1.05
-const MAX_FLOORS = 3
 const COLUMN_R = 0.2
 const WALL_T = 0.16
 
@@ -551,6 +551,48 @@ const LotMesh = memo(function LotMesh({
   )
 })
 
+/** Each click on an existing cell advances its color. Height stays put until the palette wraps, which removes one story. */
+export function applyTownClick(
+  existing: TownCell | undefined,
+  swatch: number,
+  place: { ix: number; iz: number; baseY: number },
+): TownCell | null {
+  if (!existing) {
+    return {
+      ix: place.ix,
+      iz: place.iz,
+      baseY: place.baseY,
+      height: 1,
+      color: swatch,
+    }
+  }
+  const nextColor = existing.color + 1
+  if (nextColor < TOWN_SWATCHES.length) {
+    return { ...existing, color: nextColor }
+  }
+  if (existing.height > 1) {
+    return { ...existing, height: existing.height - 1, color: 0 }
+  }
+  return null
+}
+
+const TOUCH = [
+  [0, 0],
+  [GRID_ORTHO.south.dix, GRID_ORTHO.south.diz],
+  [GRID_ORTHO.east.dix, GRID_ORTHO.east.diz],
+  [GRID_ORTHO.north.dix, GRID_ORTHO.north.diz],
+  [GRID_ORTHO.west.dix, GRID_ORTHO.west.diz],
+] as const
+
+function neighborColors(map: Map<string, TownCell>, ix: number, iz: number) {
+  const colors: number[] = []
+  for (const dir of Object.values(GRID_ORTHO)) {
+    const neighbor = map.get(gridKey(ix + dir.dix, iz + dir.diz))
+    if (neighbor) colors.push(neighbor.color)
+  }
+  return colors
+}
+
 type TownProps = {
   cellsRef: { current: Map<string, TownCell> }
   layout: GridLayout
@@ -559,6 +601,10 @@ type TownProps = {
   /** Bumped when the grid map is cleared from outside (Reset Grid). */
   claimRevision: number
   editBridge: MutableRefObject<(ix: number, iz: number, y: number) => void>
+  autoGrow: boolean
+  autoGrowSeconds: number
+  /** Terrain height at a cell, matching the ground sheet. */
+  groundAt: (ix: number, iz: number) => number
 }
 
 export function EpSalvageTown({
@@ -568,40 +614,66 @@ export function EpSalvageTown({
   grain,
   claimRevision,
   editBridge,
+  autoGrow,
+  autoGrowSeconds,
+  groundAt,
 }: TownProps) {
   const [color, setColor] = useState(0)
   const [lots, setLots] = useState<TownCell[]>([])
   const colorRef = useRef(color)
   colorRef.current = color
+  const groundAtRef = useRef(groundAt)
+  groundAtRef.current = groundAt
+
+  const publish = (ix: number, iz: number) => {
+    const map = cellsRef.current
+    for (const [dx, dz] of TOUCH) {
+      const item = map.get(gridKey(ix + dx, iz + dz))
+      if (item) map.set(gridKey(ix + dx, iz + dz), { ...item })
+    }
+    setLots(Array.from(map.values()))
+  }
 
   const editAt = (ix: number, iz: number, y: number) => {
     const key = gridKey(ix, iz)
     const map = cellsRef.current
-    const existing = map.get(key)
-    const swatch = colorRef.current
-    if (!existing) {
-      map.set(key, { ix, iz, height: 1, color: swatch, baseY: y })
-    } else if (existing.color !== swatch) {
-      map.set(key, { ...existing, color: swatch })
-    } else if (existing.height >= MAX_FLOORS) {
-      map.delete(key)
-    } else {
-      map.set(key, { ...existing, height: existing.height + 1 })
-    }
-    const touch = [
-      [ix, iz],
-      [ix + GRID_ORTHO.south.dix, iz + GRID_ORTHO.south.diz],
-      [ix + GRID_ORTHO.east.dix, iz + GRID_ORTHO.east.diz],
-      [ix + GRID_ORTHO.north.dix, iz + GRID_ORTHO.north.diz],
-      [ix + GRID_ORTHO.west.dix, iz + GRID_ORTHO.west.diz],
-    ]
-    for (const [tx, tz] of touch) {
-      const item = map.get(gridKey(tx, tz))
-      if (item) map.set(gridKey(tx, tz), { ...item })
-    }
-    setLots(Array.from(map.values()))
+    const next = applyTownClick(map.get(key), colorRef.current, { ix, iz, baseY: y })
+    if (next) map.set(key, next)
+    else map.delete(key)
+    publish(ix, iz)
   }
   editBridge.current = editAt
+
+  const growOnce = () => {
+    const map = cellsRef.current
+    const spot = pickGrowthCell(map)
+    if (!spot) return
+    const key = gridKey(spot.ix, spot.iz)
+    if (map.has(key)) return
+    const nearby = neighborColors(map, spot.ix, spot.iz)
+    const swatch =
+      nearby.length > 0 && Math.random() < 0.72
+        ? nearby[Math.floor(Math.random() * nearby.length)]
+        : Math.floor(Math.random() * TOWN_SWATCHES.length)
+    const height = hash2(spot.ix, spot.iz, 9) > 0.78 ? 2 : 1
+    map.set(key, {
+      ix: spot.ix,
+      iz: spot.iz,
+      height,
+      color: swatch,
+      baseY: groundAtRef.current(spot.ix, spot.iz),
+    })
+    publish(spot.ix, spot.iz)
+  }
+  const growRef = useRef(growOnce)
+  growRef.current = growOnce
+
+  useEffect(() => {
+    if (!autoGrow) return
+    const delay = Math.max(0.25, autoGrowSeconds) * 1000
+    const id = window.setInterval(() => growRef.current(), delay)
+    return () => window.clearInterval(id)
+  }, [autoGrow, autoGrowSeconds])
 
   useEffect(() => {
     setLots(Array.from(cellsRef.current.values()))

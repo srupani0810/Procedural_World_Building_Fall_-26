@@ -13,7 +13,13 @@ import type { VoxelParams, VoxelRenderMode } from './voxelParams.ts'
 import { SHADER_STUDIES, getShaderStudy } from './shaderStudies.ts'
 import type { ShaderStudyId } from './shaderStudies.ts'
 import type { EpParams } from './epParams.ts'
-import { createDefaultEpTerrain, createDefaultEpVoxel } from './epParams.ts'
+import {
+  AUTO_GROW_FAST_SECONDS,
+  AUTO_GROW_SLOW_SECONDS,
+  createDefaultEpTerrain,
+  createDefaultEpVoxel,
+  formatAutoGrow,
+} from './epParams.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -328,8 +334,8 @@ export default function AppChrome({
               defaultOpen
             >
               <p className="chrome-hint">
-                Invisible until toggled. Cell ids stay put when size or warp changes. Reset Grid
-                clears claimed lots only.
+                Invisible until toggled. Cell ids stay put when size or warp changes. Autonomous
+                growth claims neighboring lots on a timer. Reset Grid clears claimed lots only.
               </p>
               <Slider
                 label="Cell size"
@@ -348,6 +354,27 @@ export default function AppChrome({
                 step={0.01}
                 display={epParams.gridWarp.toFixed(2)}
                 onChange={(gridWarp) => onEpChange({ gridWarp })}
+              />
+              <label className="chrome-check">
+                <span>Autonomous growth</span>
+                <input
+                  type="checkbox"
+                  checked={epParams.autoGrow}
+                  onChange={(event) => onEpChange({ autoGrow: event.target.checked })}
+                />
+              </label>
+              <Slider
+                label="Build rate"
+                value={AUTO_GROW_SLOW_SECONDS + AUTO_GROW_FAST_SECONDS - epParams.autoGrowSeconds}
+                min={AUTO_GROW_FAST_SECONDS}
+                max={AUTO_GROW_SLOW_SECONDS}
+                step={1}
+                display={formatAutoGrow(epParams.autoGrowSeconds)}
+                onChange={(rate) =>
+                  onEpChange({
+                    autoGrowSeconds: AUTO_GROW_SLOW_SECONDS + AUTO_GROW_FAST_SECONDS - rate,
+                  })
+                }
               />
               <label className="chrome-check">
                 <span>Grid visibility</span>

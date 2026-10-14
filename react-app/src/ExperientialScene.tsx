@@ -1,6 +1,6 @@
 import { OrbitControls } from '@react-three/drei'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
   BufferGeometry,
   Color,
@@ -8,7 +8,6 @@ import {
   Float32BufferAttribute,
   Fog,
   LineBasicMaterial,
-  MeshLambertMaterial,
   PlaneGeometry,
   Vector3,
   type Mesh,
@@ -21,13 +20,13 @@ import {
   EP_SCAFFOLD_DENSITY,
   EP_SKY_COLOR,
   EP_TOWN_GRADIENT,
-  EP_WATER_COLOR,
   epFogFar,
   epFogNear,
   epFogReach,
 } from './epParams.ts'
 import { createEpMaterial } from './epMaterial.ts'
-import { clearGrid, type GridCell, type GridLayout } from './epGrid.ts'
+import { createStillWaterMaterial, DeadSky, HazeSilhouettes } from './epAtmosphere.tsx'
+import { cellCentroid, clearGrid, type GridCell, type GridLayout } from './epGrid.ts'
 import { EpGrid } from './epGrid.tsx'
 import { EpSalvageTown } from './epTown.tsx'
 import type { GradientStop } from './heightGradient.ts'
@@ -187,15 +186,25 @@ function SoftWater({ fogDensity }: { fogDensity: number }) {
   const meshRef = useRef<Mesh>(null)
   const reach = epFogReach(fogDensity)
   const size = Math.max(OVERVIEW_GROUND_SIZE, Math.min(640, reach * 2.2))
-  const mat = useMemo(
-    () =>
-      new MeshLambertMaterial({
-        color: EP_WATER_COLOR,
-        fog: true,
-      }),
-    [],
+  const mat = useMemo(() => createStillWaterMaterial(), [])
+  const geo = useMemo(() => {
+    const plane = new PlaneGeometry(size, size, 1, 1)
+    const colors = new Float32Array(plane.attributes.position.count * 3)
+    for (let i = 0; i < plane.attributes.position.count; i++) {
+      colors[i * 3] = 0.02
+      colors[i * 3 + 1] = 0.022
+      colors[i * 3 + 2] = 0.026
+    }
+    plane.setAttribute('color', new Float32BufferAttribute(colors, 3))
+    return plane
+  }, [size])
+  useEffect(
+    () => () => {
+      mat.dispose()
+      geo.dispose()
+    },
+    [mat, geo],
   )
-  useEffect(() => () => mat.dispose(), [mat])
   useFrame(({ camera }) => {
     const mesh = meshRef.current
     if (!mesh) return
@@ -208,12 +217,11 @@ function SoftWater({ fogDensity }: { fogDensity: number }) {
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, -0.55, 0]}
       material={mat}
+      geometry={geo}
       frustumCulled={false}
       renderOrder={-1}
       raycast={() => null}
-    >
-      <planeGeometry args={[size, size]} />
-    </mesh>
+    />
   )
 }
 
@@ -241,11 +249,11 @@ function buildFollowGroundGeometry(
     positions.setZ(i, n * heightScale + 0.25)
 
     const t = (n + 1) * 0.5
-    // Lift albedo so ground still reads through linear fog haze (fog color ≈ sky).
-    const shade = 0.38 + t * 0.52
+    // Near-black water. A small height tint keeps the swell readable up close.
+    const shade = 0.02 + t * 0.035
     colors[i * 3] = shade
-    colors[i * 3 + 1] = shade + 0.03
-    colors[i * 3 + 2] = shade + 0.06
+    colors[i * 3 + 1] = shade + 0.004
+    colors[i * 3 + 2] = shade + 0.008
   }
 
   positions.needsUpdate = true
@@ -288,6 +296,8 @@ function StreamedNoiseGround({
   const firstPersonRef = useRef(firstPerson)
   firstPersonRef.current = firstPerson
   const { camera: cam } = useThree()
+  const waterMat = useMemo(() => createStillWaterMaterial(), [])
+  useEffect(() => () => waterMat.dispose(), [waterMat])
 
   const sample = useMemo(() => createNoise(terrain), [terrain])
   const heightScale = terrainAmplitude(terrain)
@@ -397,9 +407,8 @@ function StreamedNoiseGround({
       rotation={[-Math.PI / 2, 0, 0]}
       frustumCulled={false}
       onPointerDown={editEnabled ? onPointerDown : undefined}
-    >
-      <meshLambertMaterial vertexColors flatShading={false} fog side={DoubleSide} />
-    </mesh>
+      material={waterMat}
+    />
   )
 }
 
@@ -910,6 +919,15 @@ export default function ExperientialScene({
     () => ({ cellSize: ep.cellSize, warp: ep.gridWarp }),
     [ep.cellSize, ep.gridWarp],
   )
+  const sample = useMemo(() => createNoise(terrain), [terrain])
+  const heightScale = terrainAmplitude(terrain)
+  const groundAt = useCallback(
+    (ix: number, iz: number) => {
+      const [x, z] = cellCentroid(ix, iz, gridLayout)
+      return sample(x, z) * heightScale + 0.25
+    },
+    [sample, heightScale, gridLayout],
+  )
 
   useEffect(() => {
     clearGrid(townCells.current)
@@ -930,6 +948,8 @@ export default function ExperientialScene({
       gl={{ antialias: true }}
     >
       <color attach="background" args={[EP_SKY_COLOR]} />
+      <DeadSky />
+      <HazeSilhouettes />
       <FogController
         density={ep.fogDensity}
         color={EP_FOG_COLOR}
@@ -968,6 +988,9 @@ export default function ExperientialScene({
         grain={ep.glitchIntensity}
         claimRevision={claimRevision}
         editBridge={editBridge}
+        autoGrow={ep.autoGrow}
+        autoGrowSeconds={ep.autoGrowSeconds}
+        groundAt={groundAt}
       />
       <OrbitControls
         makeDefault

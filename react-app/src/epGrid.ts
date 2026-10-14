@@ -62,6 +62,44 @@ export function clearGrid(cells: Map<string, GridCell>) {
   cells.clear()
 }
 
+/**
+ * Next lot for idle growth. An empty map seeds the origin.
+ * Otherwise the pick is an unclaimed cell sharing an edge with a claimed one,
+ * weighted toward cells that already touch more of the settlement.
+ */
+export function pickGrowthCell(
+  cells: ReadonlyMap<string, GridCell>,
+  random: () => number = Math.random,
+) {
+  if (cells.size === 0) return { ix: 0, iz: 0 }
+  const options: { ix: number; iz: number; weight: number }[] = []
+  const seen = new Set<string>()
+  for (const cell of cells.values()) {
+    for (const dir of Object.values(GRID_ORTHO)) {
+      const ix = cell.ix + dir.dix
+      const iz = cell.iz + dir.diz
+      const key = gridKey(ix, iz)
+      if (cells.has(key) || seen.has(key)) continue
+      seen.add(key)
+      let weight = 0
+      for (const around of Object.values(GRID_ORTHO)) {
+        if (cells.has(gridKey(ix + around.dix, iz + around.diz))) weight += 1
+      }
+      if (weight > 0) options.push({ ix, iz, weight })
+    }
+  }
+  if (options.length === 0) return null
+  let total = 0
+  for (const option of options) total += option.weight
+  let roll = random() * total
+  for (const option of options) {
+    roll -= option.weight
+    if (roll <= 0) return { ix: option.ix, iz: option.iz }
+  }
+  const last = options[options.length - 1]
+  return { ix: last.ix, iz: last.iz }
+}
+
 function hash(ix: number, iz: number) {
   const n = Math.sin(ix * 127.1 + iz * 311.7) * 43758.5453
   return n - Math.floor(n)

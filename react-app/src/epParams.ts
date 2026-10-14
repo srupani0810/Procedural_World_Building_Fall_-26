@@ -13,6 +13,10 @@ export type EpParams = {
   gridWarp: number
   /** Debug lines for the settlement grid. */
   gridVisible: boolean
+  /** Idle claims spread from the existing settlement. */
+  autoGrow: boolean
+  /** Seconds between autonomous claims. */
+  autoGrowSeconds: number
 }
 
 export const defaultEpParams: EpParams = {
@@ -25,6 +29,18 @@ export const defaultEpParams: EpParams = {
   cellSize: 1.85,
   gridWarp: 0.55,
   gridVisible: false,
+  autoGrow: true,
+  autoGrowSeconds: 6,
+}
+
+/** Fastest and slowest autonomous claim spacing, in seconds. */
+export const AUTO_GROW_FAST_SECONDS = 3
+export const AUTO_GROW_SLOW_SECONDS = 180
+
+export function formatAutoGrow(seconds: number) {
+  if (seconds < 60) return `every ${Math.round(seconds)}s`
+  const minutes = seconds / 60
+  return `every ${minutes >= 10 ? minutes.toFixed(0) : minutes.toFixed(1)} min`
 }
 
 /**
@@ -56,10 +72,13 @@ export function createDefaultEpVoxel(): VoxelParams {
   }
 }
 
-/** Near-black sky / clear-color — also used for fog so haze has no color seam. */
-export const EP_SKY_COLOR = '#0c0d10'
+/**
+ * Dead-gray horizon. Fog uses the same value so the field fades into the sky
+ * with no color seam. Overhead is a slightly lighter gray.
+ */
+export const EP_SKY_COLOR = '#3a4046'
 
-/** Fog matches background exactly (seamless fade into haze). */
+/** Fog matches the horizon so distant water dissolves into the sky. */
 export const EP_FOG_COLOR = EP_SKY_COLOR
 
 /**
@@ -106,8 +125,8 @@ export function epFogReach(fogDensity: number) {
   return Math.max(epFogFar(fogDensity, true), epFogFar(fogDensity, false) + 8)
 }
 
-/** Dark water under the blocky islands. */
-export const EP_WATER_COLOR = '#1a1e24'
+/** Near-black water under the noise sheet. */
+export const EP_WATER_COLOR = '#07080a'
 
 /** Height colors for EP Interactive mesh only. */
 export const EP_TOWN_GRADIENT: GradientStop[] = [
