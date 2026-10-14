@@ -622,6 +622,85 @@ function addTarp(cell: TownCell, layout: GridLayout) {
   return toGeo(pos, nrm, col, edge, drape)
 }
 
+/** The lot quad itself. Building scale does not widen this, so neighbors cannot occupy the same ground. */
+function lotFootprint(ix: number, iz: number, layout: GridLayout): XZ[] {
+  return cellCorners(ix, iz, layout)
+}
+
+/**
+ * Highest terrain sample under the house. The floor sits on that height.
+ * The foundation then drops to the slope below it.
+ */
+export function lotFloor(
+  ix: number,
+  iz: number,
+  layout: GridLayout,
+  heightAt: (x: number, z: number) => number,
+) {
+  const poly = lotFootprint(ix, iz, layout)
+  const [cx, cz] = cellCentroid(ix, iz, layout)
+  let max = heightAt(cx, cz)
+  const consider = (x: number, z: number) => {
+    const y = heightAt(x, z)
+    if (y > max) max = y
+  }
+  for (let i = 0; i < 4; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % 4]
+    for (let s = 0; s <= 4; s++) {
+      const t = s / 4
+      consider(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+    }
+    consider((a[0] + cx) / 2, (a[1] + cz) / 2)
+  }
+  return max
+}
+
+/** How far the skirt digs under the meshed ground so the chord of a quad cannot show a gap. */
+const FOUNDATION_BURY = 0.75
+
+function buildFoundation(
+  ix: number,
+  iz: number,
+  layout: GridLayout,
+  floor: number,
+  heightAt: (x: number, z: number) => number,
+  rgb: RGB,
+) {
+  const poly = lotFootprint(ix, iz, layout)
+  const [cx, cz] = cellCentroid(ix, iz, layout)
+  const pos: number[] = []
+  const nrm: number[] = []
+  const col: number[] = []
+  const edge: number[] = []
+  const steps = 8
+  const ring: Array<[number, number, number]> = []
+  for (let i = 0; i < 4; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % 4]
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps
+      const x = a[0] + (b[0] - a[0]) * t
+      const z = a[1] + (b[1] - a[1]) * t
+      const dx = cx - x
+      const dz = cz - z
+      const len = Math.hypot(dx, dz) || 1
+      ring.push([x + (dx / len) * 0.04, heightAt(x, z), z + (dz / len) * 0.04])
+    }
+  }
+  const top = floor + 0.04
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    const a0: V = [a[0], top, a[2]]
+    const b0: V = [b[0], top, b[2]]
+    const b1: V = [b[0], b[1] - FOUNDATION_BURY, b[2]]
+    const a1: V = [a[0], a[1] - FOUNDATION_BURY, a[2]]
+    pushQuad(pos, nrm, col, edge, a0, b0, b1, a1, rgb, [cx, floor, cz])
+  }
+  return toGeo(pos, nrm, col, edge)
+}
+
 export function buildLotGeometry(cell: TownCell, neighbors: LotNeighbors, layout: GridLayout) {
   const pos: number[] = []
   const nrm: number[] = []
@@ -748,6 +827,8 @@ const LotMesh = memo(function LotMesh({
   west,
   cellSize,
   warp,
+  buildingScale,
+  heightAt,
   decayRef,
 }: {
   cell: TownCell
@@ -757,45 +838,61 @@ const LotMesh = memo(function LotMesh({
   west: TownCell | null
   cellSize: number
   warp: number
+  buildingScale: number
+  heightAt: (x: number, z: number) => number
   decayRef: { current: DecayParams }
 }) {
+  const layout = useMemo(
+    () => ({ cellSize, warp, buildingScale }),
+    [cellSize, warp, buildingScale],
+  )
+  const floor = useMemo(
+    () => lotFloor(cell.ix, cell.iz, layout, heightAt),
+    [cell.ix, cell.iz, layout, heightAt],
+  )
+  const seated = useMemo(() => ({ ...cell, baseY: floor }), [cell, floor])
+  const seat = (neighbor: TownCell | null) =>
+    neighbor ? { ...neighbor, baseY: lotFloor(neighbor.ix, neighbor.iz, layout, heightAt) } : null
   const built = useMemo(
-    () => buildLotGeometry(cell, { south, east, north, west }, { cellSize, warp }),
+    () =>
+      buildLotGeometry(
+        seated,
+        { south: seat(south), east: seat(east), north: seat(north), west: seat(west) },
+        layout,
+      ),
     [
-      cell.ix,
-      cell.iz,
-      cell.height,
-      cell.color,
-      cell.baseY,
-      south?.height,
-      south?.baseY,
-      east?.height,
-      east?.baseY,
-      north?.height,
-      north?.baseY,
-      west?.height,
-      west?.baseY,
-      cellSize,
-      warp,
+      seated,
+      south,
+      east,
+      north,
+      west,
+      layout,
+      heightAt,
+      floor,
     ],
+  )
+  const foundation = useMemo(
+    () => buildFoundation(cell.ix, cell.iz, layout, floor, heightAt, plasterRgb[cell.color] ?? plasterRgb[0]),
+    [cell.ix, cell.iz, cell.color, layout, floor, heightAt],
   )
   useEffect(() => {
     return () => {
       built.plaster.dispose()
       built.glow.dispose()
       built.tarp.dispose()
+      foundation.dispose()
     }
-  }, [built])
+  }, [built, foundation])
 
   const wear = useMemo(() => {
     const paint = new Color(TOWN_SWATCHES[cell.color]?.glow ?? '#c8c4bc')
     return createWearUniforms(
-      cell.baseY,
+      floor,
       (hash2(cell.ix, cell.iz, 3) - 0.5) * 0.28,
       (hash2(cell.ix, cell.iz, 4) - 0.5) * 0.22,
       paint,
     )
-  }, [cell.ix, cell.iz, cell.baseY, cell.color])
+  }, [cell.ix, cell.iz, cell.color, floor])
   const plasterMat = useMemo(() => createPlasterMaterial(wear), [wear])
   const glowMat = useMemo(() => createGlowMaterial(wear), [wear])
   const tarpMat = useMemo(() => createTarpMaterial(wear), [wear])
@@ -819,15 +916,24 @@ const LotMesh = memo(function LotMesh({
   const plasterCount = built.plaster.getAttribute('position')?.count ?? 0
   const glowCount = built.glow.getAttribute('position')?.count ?? 0
   const tarpCount = built.tarp.getAttribute('position')?.count ?? 0
+  const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
+  const foundationCount = foundation.getAttribute('position')?.count ?? 0
   return (
-    <>
-      {plasterCount > 0 ? <mesh geometry={built.plaster} material={plasterMat} /> : null}
-      {tarpCount > 0 ? (
-        <mesh geometry={built.tarp} material={tarpMat} raycast={() => null} />
+    <group>
+      {foundationCount > 0 ? (
+        <mesh geometry={foundation} material={plasterMat} raycast={() => null} />
       ) : null}
-      {glowCount > 0 ? <mesh geometry={built.glow} material={glowMat} raycast={() => null} /> : null}
-      <CellStageFixture cell={cell} cellSize={cellSize} warp={warp} decayRef={decayRef} />
-    </>
+      <group name={`lot-${cell.ix},${cell.iz}`} position={[cx, floor, cz]} scale={[1, buildingScale, 1]}>
+      <group position={[-cx, -floor, -cz]}>
+        {plasterCount > 0 ? <mesh geometry={built.plaster} material={plasterMat} /> : null}
+        {tarpCount > 0 ? (
+          <mesh geometry={built.tarp} material={tarpMat} raycast={() => null} />
+        ) : null}
+        {glowCount > 0 ? <mesh geometry={built.glow} material={glowMat} raycast={() => null} /> : null}
+        <CellStageFixture cell={{ ...cell, baseY: floor }} cellSize={cellSize} warp={warp} decayRef={decayRef} />
+      </group>
+      </group>
+    </group>
   )
 })
 
@@ -969,6 +1075,8 @@ type TownProps = {
   autoGrow: boolean
   autoGrowSeconds: number
   maxStories: number
+  /** Terrain height at a world point, matching the ground sheet. */
+  heightAt: (x: number, z: number) => number
   /** Terrain height at a cell, matching the ground sheet. */
   groundAt: (ix: number, iz: number) => number
   decay: DecayParams
@@ -977,6 +1085,10 @@ type TownProps = {
   /** Written every frame. Fog reads this without waiting on React. */
   townDecayRef: MutableRefObject<number>
   onTownDecay: (share: number) => void
+  /** Age/stage lines for the viewport overlay. Same strings as the in-scene readout. */
+  onAgeReadout: (lines: string[], waterNote: boolean) => void
+  /** Fired when the set of claimed cells changes. Age ticks do not call this. */
+  onSettlement: () => void
 }
 
 export function EpSalvageTown({
@@ -989,11 +1101,14 @@ export function EpSalvageTown({
   autoGrow,
   autoGrowSeconds,
   maxStories,
+  heightAt,
   groundAt,
   decay,
   decayReset,
   townDecayRef,
   onTownDecay,
+  onAgeReadout,
+  onSettlement,
 }: TownProps) {
   const [color, setColor] = useState(0)
   const [lots, setLots] = useState<TownCell[]>([])
@@ -1010,16 +1125,26 @@ export function EpSalvageTown({
   maxStoriesRef.current = maxStories
   const layoutRef = useRef(layout)
   layoutRef.current = layout
+  const heightAtRef = useRef(heightAt)
+  heightAtRef.current = heightAt
   const onTownDecayRef = useRef(onTownDecay)
   onTownDecayRef.current = onTownDecay
+  const onAgeReadoutRef = useRef(onAgeReadout)
+  onAgeReadoutRef.current = onAgeReadout
+  const onSettlementRef = useRef(onSettlement)
+  onSettlementRef.current = onSettlement
 
   const publish = (ix: number, iz: number) => {
     const map = cellsRef.current
     for (const [dx, dz] of TOUCH) {
-      const item = map.get(gridKey(ix + dx, iz + dz))
-      if (item) map.set(gridKey(ix + dx, iz + dz), { ...item })
+      const key = gridKey(ix + dx, iz + dz)
+      const item = map.get(key)
+      if (item) map.set(key, { ...item })
     }
-    setLots(Array.from(map.values()))
+    const byKey = new Map<string, TownCell>()
+    for (const cell of map.values()) byKey.set(gridKey(cell.ix, cell.iz), cell)
+    setLots([...byKey.values()])
+    onSettlementRef.current()
   }
 
   const rejectWater = (ix: number, iz: number) => {
@@ -1029,13 +1154,19 @@ export function EpSalvageTown({
   }
 
   const editAt = (ix: number, iz: number, y: number) => {
+    void y
     if (cellCoversWater(ix, iz, layoutRef.current)) {
       rejectWater(ix, iz)
       return
     }
     const key = gridKey(ix, iz)
     const map = cellsRef.current
-    const next = applyTownClick(map.get(key), colorRef.current, { ix, iz, baseY: y }, maxStoriesRef.current)
+    const next = applyTownClick(
+      map.get(key),
+      colorRef.current,
+      { ix, iz, baseY: lotFloor(ix, iz, layoutRef.current, heightAtRef.current) },
+      maxStoriesRef.current,
+    )
     if (next) map.set(key, next)
     else map.delete(key)
     publish(ix, iz)
@@ -1061,12 +1192,14 @@ export function EpSalvageTown({
       nearby.length > 0 && Math.random() < 0.72
         ? nearby[Math.floor(Math.random() * nearby.length)]
         : Math.floor(Math.random() * TOWN_SWATCHES.length)
+    const cap = Math.max(1, Math.floor(maxStoriesRef.current))
+    const height = 1 + Math.floor(Math.random() * cap)
     map.set(key, {
       ix: spot.ix,
       iz: spot.iz,
-      height: 1,
+      height,
       color: swatch,
-      baseY: groundAtRef.current(spot.ix, spot.iz),
+      baseY: lotFloor(spot.ix, spot.iz, layoutRef.current, heightAtRef.current),
       age: 0,
       inhabited: cellHasBarrel(spot.ix, spot.iz, decayRef.current.fireBarrelChance),
     })
@@ -1089,12 +1222,32 @@ export function EpSalvageTown({
   }, [autoGrow, autoGrowSeconds])
 
   useEffect(() => {
-    setLots(Array.from(cellsRef.current.values()))
+    const byKey = new Map<string, TownCell>()
+    for (const cell of cellsRef.current.values()) byKey.set(gridKey(cell.ix, cell.iz), cell)
+    setLots([...byKey.values()])
+    onSettlementRef.current()
   }, [claimRevision, cellsRef])
 
   useEffect(() => {
     for (const cell of cellsRef.current.values()) cell.age = 0
   }, [decayReset, cellsRef])
+
+  useEffect(() => {
+    onAgeReadoutRef.current(ageLines, waterNote)
+  }, [ageLines, waterNote])
+
+  useEffect(() => {
+    const map = cellsRef.current
+    let changed = false
+    for (const cell of map.values()) {
+      const floor = lotFloor(cell.ix, cell.iz, layout, heightAt)
+      if (Math.abs(cell.baseY - floor) > 0.002) {
+        cell.baseY = floor
+        changed = true
+      }
+    }
+    if (changed) setLots(Array.from(map.values()))
+  }, [heightAt, layout, cellsRef, claimRevision])
 
   useEffect(() => {
     let last = performance.now()
@@ -1131,7 +1284,7 @@ export function EpSalvageTown({
           .sort((a, b) => b.age - a.age)
           .slice(0, 4)
           .map((cell) => `${cell.ix},${cell.iz} ${cell.age.toFixed(1)}s ${cellStage(cell.age, marks)}${cellHasBarrel(cell.ix, cell.iz, chance) ? ' inhabited' : ''}`)
-        console.info(`[shift age] ${map.size} cells`, sample.join(' · ') || 'none')
+        console.info(`[weathering age] ${map.size} cells`, sample.join(' · ') || 'none')
       }
       frame = requestAnimationFrame(tick)
     }
@@ -1160,6 +1313,8 @@ export function EpSalvageTown({
           cell={cell}
           cellSize={layout.cellSize}
           warp={layout.warp}
+          buildingScale={layout.buildingScale ?? 3}
+          heightAt={heightAt}
           decayRef={decayRef}
           south={neighborCell(cellsRef.current, cell.ix, cell.iz, GRID_ORTHO.south)}
           east={neighborCell(cellsRef.current, cell.ix, cell.iz, GRID_ORTHO.east)}
@@ -1169,28 +1324,6 @@ export function EpSalvageTown({
       ))}
       <StageLightBudget cellsRef={cellsRef} layout={layout} decayRef={decayRef} />
       <FeedGrade amount={0.35 + grain * 0.35} />
-      <Html fullscreen style={{ pointerEvents: 'none' }}>
-        <div
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            maxHeight: '46vh',
-            overflow: 'auto',
-            padding: '8px 10px',
-            background: '#0c0d10cc',
-            color: '#d5d8de',
-            font: '11px/1.45 ui-monospace, monospace',
-            whiteSpace: 'pre',
-            pointerEvents: 'auto',
-          }}
-        >
-          {waterNote ? <div style={{ color: '#ff5a5a', marginBottom: 6 }}>water — no build</div> : null}
-          {ageLines.length === 0
-            ? 'age — no claimed cells'
-            : `age (s) · stage\n${ageLines.join('\n')}`}
-        </div>
-      </Html>
       {editEnabled ? (
         <Html fullscreen style={{ pointerEvents: 'none' }}>
           <div className="ep-swatches">

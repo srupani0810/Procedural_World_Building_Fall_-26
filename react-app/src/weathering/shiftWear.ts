@@ -101,7 +101,7 @@ function bindWear(material: MeshStandardMaterial | ShaderMaterial, wear: WearUni
         ` + shader.fragmentShader.replace('#include <color_fragment>', WEAR_FRAGMENT)
     }
   }
-  material.customProgramCacheKey = () => (fragment ? 'shift-plaster-wear' : 'shift-tarp-wear')
+  material.customProgramCacheKey = () => (fragment ? 'weathering-plaster-wear' : 'weathering-tarp-wear')
   material.needsUpdate = true
 }
 
@@ -141,7 +141,7 @@ export function createTarpMaterial(wear: WearUniforms) {
         `,
       )
   }
-  material.customProgramCacheKey = () => 'shift-tarp-wear'
+  material.customProgramCacheKey = () => 'weathering-tarp-wear'
   return material
 }
 export function createGlowMaterial(wear: WearUniforms) {

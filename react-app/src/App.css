@@ -107,6 +107,50 @@
   border-radius: var(--radius);
 }
 
+.chrome-telemetry {
+  left: auto;
+  right: 12px;
+  width: min(272px, calc(100vw - 24px));
+  max-height: calc(100vh - 64px);
+  padding: 0;
+}
+
+.chrome-telemetry .chrome-group {
+  margin-top: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.chrome-telemetry .chrome-group.is-open {
+  border: none;
+}
+
+.chrome-telemetry-stage {
+  color: var(--highlight);
+  font-weight: 600;
+}
+
+.chrome-telemetry-alert {
+  margin: 0 0 8px;
+  color: var(--highlight);
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+.chrome-telemetry-readout {
+  margin: 0;
+  font: inherit;
+  font-size: var(--fs-ui);
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  white-space: pre;
+}
+
 .chrome-panel-header {
   display: flex;
   align-items: center;

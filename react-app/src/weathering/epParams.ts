@@ -1,6 +1,10 @@
 import type { GradientStop } from '../heightGradient.ts'
+import { coverageToThreshold } from './waterMask.ts'
 import { defaultTerrainParams, type TerrainParams } from '../terrainParams.ts'
 import { defaultVoxelParams, type VoxelParams } from '../voxelParams.ts'
+
+/** Stage assigned to scenery. Random spreads the four stages across the ring. */
+export type BackgroundStageBias = 'random' | 'new' | 'settled' | 'abandoned' | 'reclaimed'
 
 export type EpParams = {
   /** Soft mist fog density (Voxel Cloud depth). */
@@ -9,6 +13,8 @@ export type EpParams = {
   glitchIntensity: number
   /** Settlement quad spacing. Independent of voxel resolution. */
   cellSize: number
+  /** Visual size of each house. Lot spacing stays on cell size. */
+  buildingScale: number
   /** Corner noise strength. 0 keeps the lattice rigid. */
   gridWarp: number
   /** Debug lines for the settlement grid. */
@@ -21,6 +27,35 @@ export type EpParams = {
   maxStories: number
   /** Draw the water-mask overlay. Does not render water or block building. */
   waterDebug: boolean
+  /** Share of the water-noise field that may be wet. Writes the noise threshold. */
+  waterCoverage: number
+  /** Vertical offset of the water surface, in world units. */
+  waterLevel: number
+  /** Multiplier on the stream's scroll and ripple. */
+  waterFlow: number
+  /** Frequency of the water noise. Separate from terrain frequency. */
+  waterNoiseFrequency: number
+  /** Noise at or below this value can be water. Coverage sets this directly. */
+  waterNoiseThreshold: number
+  /** How many background columns are scattered around the camera. */
+  backgroundDensity: number
+  /**
+   * Story-height multiplier for scenery. Matches Grid building scale at ×3.
+   * Footprint stays on the lot, the same way player houses do.
+   */
+  backgroundBuildingScale: number
+  /** Nearest distance from the camera that scenery may stand. */
+  backgroundMinDistance: number
+  /** Farthest distance from the camera that scenery may stand. */
+  backgroundMaxDistance: number
+  /** Shortest background column, in stories. Independent of Max height. */
+  backgroundMinStories: number
+  /** Tallest background column, in stories. Independent of Max height. */
+  backgroundMaxStories: number
+  /** Which decay stage background columns are built in. */
+  backgroundStageBias: BackgroundStageBias
+  /** Bumped by Regenerate. Rerolls scenery only. */
+  backgroundSeed: number
 }
 
 export type DecayParams = {
@@ -81,12 +116,26 @@ export const defaultEpParams: EpParams = {
   fogDensity: 0.045,
   glitchIntensity: 0.65,
   cellSize: 1.85,
+  buildingScale: 3,
   gridWarp: 0.55,
   gridVisible: false,
   autoGrow: true,
   autoGrowSeconds: 6,
   maxStories: 8,
   waterDebug: false,
+  waterCoverage: 0.45,
+  waterLevel: 0.7,
+  waterFlow: 1,
+  waterNoiseFrequency: 0.012,
+  waterNoiseThreshold: coverageToThreshold(0.45),
+  backgroundDensity: 22,
+  backgroundBuildingScale: 3,
+  backgroundMinDistance: 36,
+  backgroundMaxDistance: 110,
+  backgroundMinStories: 2,
+  backgroundMaxStories: 7,
+  backgroundStageBias: 'random',
+  backgroundSeed: 1,
 }
 
 /** Fastest and slowest autonomous claim spacing, in seconds. */

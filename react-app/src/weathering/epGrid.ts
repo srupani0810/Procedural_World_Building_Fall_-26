@@ -9,6 +9,10 @@ export type GridLayout = {
   cellSize: number
   /** 0 = rigid lattice. Higher values scale the low-frequency corner offset. */
   warp: number
+  /**
+   * Visual size of the house on a lot. Does not move cell ids or lot spacing.
+   */
+  buildingScale?: number
 }
 
 export type CellStage = 'new' | 'settled' | 'abandoned' | 'reclaimed'

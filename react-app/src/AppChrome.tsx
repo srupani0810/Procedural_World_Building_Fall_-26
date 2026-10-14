@@ -20,8 +20,8 @@ import {
   createDefaultEpVoxel,
   formatAutoGrow,
 } from './epParams.ts'
-import { ShiftPanel } from './afterLastShift/ShiftPanel.tsx'
-import type { DecayParams, EpParams as ShiftEpParams } from './afterLastShift/epParams.ts'
+import { ShiftPanel } from './weathering/ShiftPanel.tsx'
+import type { DecayParams, EpParams as ShiftEpParams } from './weathering/epParams.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -61,6 +61,7 @@ type AppChromeProps = {
   onDecayChange: (patch: Partial<DecayParams>) => void
   onResetDecay: () => void
   townDecay: number
+  ageReadout: { lines: string[]; waterNote: boolean }
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -68,6 +69,22 @@ type AppChromeProps = {
   onStart: () => void
   onStop: () => void
   onReset: () => void
+}
+
+const TELEMETRY_STAGE = /\b(abandoned|reclaimed|settled|inhabited)\b/g
+
+/** Stage words use the panel accent. Cell ids, ages, and “new” stay in the body color. */
+function colorTelemetryStages(text: string) {
+  const parts = text.split(TELEMETRY_STAGE)
+  return parts.map((part, index) =>
+    part === 'abandoned' || part === 'reclaimed' || part === 'settled' || part === 'inhabited' ? (
+      <span key={index} className="chrome-telemetry-stage">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  )
 }
 
 export default function AppChrome({
@@ -108,6 +125,7 @@ export default function AppChrome({
   onDecayChange,
   onResetDecay,
   townDecay,
+  ageReadout,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -138,11 +156,24 @@ export default function AppChrome({
         <h1>Procedural World Building</h1>
       </header>
 
+      {showShift ? (
+        <aside className="chrome-panel chrome-telemetry" aria-label="Town age">
+          <ChromeSection title="Town age" tip="Show or hide the age and stage readout." defaultOpen>
+            {ageReadout.waterNote ? <div className="chrome-telemetry-alert">water — no build</div> : null}
+            <pre className="chrome-telemetry-readout">
+              {ageReadout.lines.length === 0
+                ? 'age — no claimed cells'
+                : colorTelemetryStages(`age (s) · stage\n${ageReadout.lines.join('\n')}`)}
+            </pre>
+          </ChromeSection>
+        </aside>
+      ) : null}
+
       <aside className="chrome-panel" aria-label="Parameters">
         <div className="chrome-panel-header">
           <h2>
             {showShift
-              ? 'After the Last Shift'
+              ? 'Weathering'
               : showEp
                 ? 'Playground'
                 : showVoxels
@@ -209,7 +240,7 @@ export default function AppChrome({
             className={showShift ? 'is-active' : undefined}
             onClick={() => onMode('shift')}
           >
-            After the Last Shift
+            Weathering
           </button>
         </div>
 

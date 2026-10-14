@@ -27,12 +27,13 @@ import {
   orbitFogThicken,
 } from './epParams.ts'
 import { createEpMaterial } from './epMaterial.ts'
-import { createStillWaterMaterial, DeadSky, HazeSilhouettes } from './epAtmosphere.tsx'
+import { createStillWaterMaterial, DeadSky } from './epAtmosphere.tsx'
 import { cellCentroid, clearGrid, type GridCell, type GridLayout } from './epGrid.ts'
 import { EpGrid } from './epGrid.tsx'
 import { EpSalvageTown } from './epTown.tsx'
-import { buildWaterMask, publishWaterMask } from './waterMask.ts'
+import { buildWaterMask, coverageToThreshold, publishWaterMask } from './waterMask.ts'
 import { StreamWater, WaterMaskOverlay } from './waterOverlay.tsx'
+import { BackgroundBuildings, type BackgroundSettings } from './backgroundBuildings.tsx'
 import type { GradientStop } from '../heightGradient.ts'
 import { createNoise, terrainAmplitude, type TerrainParams } from '../terrainParams.ts'
 import { buildGreedyInteractiveMesh, hitToVoxelIndex } from '../voxelGreedyMesh.ts'
@@ -61,6 +62,8 @@ type Props = {
   decayReset: number
   /** 0–1 town decay share, for the Decay panel readout. */
   onTownDecay: (share: number) => void
+  /** Age/stage lines drawn in the screen chrome, outside the canvas. */
+  onAgeReadout: (lines: string[], waterNote: boolean) => void
 }
 
 type ChunkEntry = {
@@ -266,11 +269,11 @@ function buildFollowGroundGeometry(
     positions.setZ(i, n * heightScale + 0.25)
 
     const t = (n + 1) * 0.5
-    // Near-black water. A small height tint keeps the swell readable up close.
-    const shade = 0.02 + t * 0.035
+    // Lift albedo so ridges still read through the haze.
+    const shade = 0.38 + t * 0.52
     colors[i * 3] = shade
-    colors[i * 3 + 1] = shade + 0.004
-    colors[i * 3 + 2] = shade + 0.008
+    colors[i * 3 + 1] = shade + 0.03
+    colors[i * 3 + 2] = shade + 0.06
   }
 
   positions.needsUpdate = true
@@ -322,12 +325,12 @@ function StreamedNoiseGround({
   const genKey = `${terrain.noiseId}|${terrain.frequency}|${terrain.amplitude}|${terrain.octaves}|${terrain.persistence}|${segments}|${heightScale}|${fogDensity}`
 
   const remesh = (ox: number, oz: number, walking: boolean) => {
-    // Orbit keeps the wide sheet (coarse from above). Jump In uses a dense patch
-    // so noise wavelength isn’t averaged out across huge quads.
+    // Orbit keeps the wide sheet, with quad spacing near the pre-520 view (~2.7).
+    // Jump In uses a dense patch so ridges read at eye height.
     const size = walking ? FP_GROUND_SIZE : OVERVIEW_GROUND_SIZE
     const segs = walking
       ? Math.max(72, Math.round(size))
-      : Math.max(48, Math.round(terrain.detail * 1.25))
+      : Math.max(48, Math.round(size / 2.7))
     const next = buildFollowGroundGeometry(ox, oz, size, sample, heightScale, segs)
     geoRef.current?.dispose()
     geoRef.current = next
@@ -920,7 +923,7 @@ function TownScaffoldDecor({
   return <lineSegments geometry={scaffoldGeo} material={scaffoldMat} raycast={() => null} />
 }
 
-export default function AfterLastShiftScene({
+export default function WeatheringScene({
   terrain,
   voxel,
   ep,
@@ -930,18 +933,50 @@ export default function AfterLastShiftScene({
   decay,
   decayReset,
   onTownDecay,
+  onAgeReadout,
 }: Props) {
   const groundPlaceRef = useRef<((wx: number, wy: number, wz: number) => void) | null>(null)
   const townCells = useRef<Map<string, GridCell>>(new Map())
+  const [settlementRevision, setSettlementRevision] = useState(0)
+  const bumpSettlement = useCallback(() => setSettlementRevision((value) => value + 1), [])
   const townDecayRef = useRef(0)
   const editBridge = useRef<(ix: number, iz: number, y: number) => void>(() => {})
   useEffect(() => {
-    return () => onTownDecay(0)
-  }, [onTownDecay])
+    return () => {
+      onTownDecay(0)
+      onAgeReadout([], false)
+    }
+  }, [onTownDecay, onAgeReadout])
   const [claimRevision, setClaimRevision] = useState(0)
   const gridLayout = useMemo<GridLayout>(
     () => ({ cellSize: ep.cellSize, warp: ep.gridWarp }),
     [ep.cellSize, ep.gridWarp],
+  )
+  const townLayout = useMemo<GridLayout>(
+    () => ({ ...gridLayout, buildingScale: ep.buildingScale ?? 3 }),
+    [gridLayout, ep.buildingScale],
+  )
+  const backgroundSettings = useMemo<BackgroundSettings>(
+    () => ({
+      density: ep.backgroundDensity ?? 22,
+      minDistance: ep.backgroundMinDistance ?? 36,
+      maxDistance: ep.backgroundMaxDistance ?? 110,
+      minStories: ep.backgroundMinStories ?? 2,
+      maxStories: ep.backgroundMaxStories ?? 7,
+      stageBias: ep.backgroundStageBias ?? 'random',
+      seed: ep.backgroundSeed ?? 1,
+      buildingScale: ep.backgroundBuildingScale ?? ep.buildingScale ?? 3,
+    }),
+    [
+      ep.backgroundDensity,
+      ep.backgroundMinDistance,
+      ep.backgroundMaxDistance,
+      ep.backgroundMinStories,
+      ep.backgroundMaxStories,
+      ep.backgroundStageBias,
+      ep.backgroundSeed,
+      ep.backgroundBuildingScale,
+    ],
   )
   const sample = useMemo(() => createNoise(terrain), [terrain])
   const heightScale = terrainAmplitude(terrain)
@@ -949,9 +984,18 @@ export default function AfterLastShiftScene({
     (x: number, z: number) => sample(x, z) * heightScale + 0.25,
     [sample, heightScale],
   )
+  const waterCoverage = ep.waterCoverage ?? 0.45
+  const waterFrequency = ep.waterNoiseFrequency ?? 0.012
+  const waterThreshold = ep.waterNoiseThreshold ?? coverageToThreshold(waterCoverage)
   const waterMask = useMemo(
-    () => buildWaterMask((x, z) => sample(x, z) * heightScale, { size: OVERVIEW_GROUND_SIZE, resolution: 256 }),
-    [sample, heightScale],
+    () =>
+      buildWaterMask(heightAt, {
+        size: OVERVIEW_GROUND_SIZE,
+        resolution: 512,
+        frequency: waterFrequency,
+        threshold: waterThreshold,
+      }),
+    [heightAt, waterFrequency, waterThreshold],
   )
   useEffect(() => {
     publishWaterMask(waterMask)
@@ -985,7 +1029,6 @@ export default function AfterLastShiftScene({
     >
       <color attach="background" args={[EP_SKY_COLOR]} />
       <DeadSky />
-      <HazeSilhouettes />
       <FogController
         density={ep.fogDensity}
         townDecayRef={townDecayRef}
@@ -1003,8 +1046,18 @@ export default function AfterLastShiftScene({
         editEnabled={!firstPerson}
         onTapPlace={onGroundTap}
       />
-      <StreamWater mask={waterMask} heightAt={heightAt} />
-      <WaterMaskOverlay mask={waterMask} heightAt={heightAt} visible={ep.waterDebug ?? false} />
+      <StreamWater
+        mask={waterMask}
+        heightAt={heightAt}
+        level={ep.waterLevel ?? 0.7}
+        flow={ep.waterFlow ?? 1}
+      />
+      <WaterMaskOverlay
+        mask={waterMask}
+        heightAt={heightAt}
+        level={ep.waterLevel ?? 0.7}
+        visible={ep.waterDebug ?? false}
+      />
       <SoftWater fogDensity={ep.fogDensity} />
       <PlayerVoxelWorld
         terrain={terrain}
@@ -1014,6 +1067,14 @@ export default function AfterLastShiftScene({
         editEnabled={!firstPerson}
         groundPlaceRef={groundPlaceRef}
       />
+      <BackgroundBuildings
+        settings={backgroundSettings}
+        heightAt={heightAt}
+        waterMask={waterMask}
+        cellsRef={townCells}
+        layout={gridLayout}
+        settlementRevision={settlementRevision}
+      />
       <EpGrid
         layout={gridLayout}
         visible={ep.gridVisible}
@@ -1022,7 +1083,7 @@ export default function AfterLastShiftScene({
       />
       <EpSalvageTown
         cellsRef={townCells}
-        layout={gridLayout}
+        layout={townLayout}
         editEnabled={!firstPerson}
         grain={ep.glitchIntensity}
         claimRevision={claimRevision}
@@ -1030,11 +1091,14 @@ export default function AfterLastShiftScene({
         autoGrow={ep.autoGrow}
         autoGrowSeconds={ep.autoGrowSeconds}
         maxStories={ep.maxStories ?? 8}
+        heightAt={heightAt}
         groundAt={groundAt}
         decay={decay}
         decayReset={decayReset}
         townDecayRef={townDecayRef}
         onTownDecay={onTownDecay}
+        onAgeReadout={onAgeReadout}
+        onSettlement={bumpSettlement}
       />
       <OrbitControls
         makeDefault

@@ -6,7 +6,7 @@ import Scene from './Scene.tsx'
 import VoxelScene from './VoxelScene.tsx'
 import ShaderScene from './ShaderScene.tsx'
 import ExperientialScene from './ExperientialScene.tsx'
-import AfterLastShiftScene from './afterLastShift/AfterLastShiftScene.tsx'
+import WeatheringScene from './weathering/WeatheringScene.tsx'
 import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion.ts'
 import type { ErosionParams } from './erosion.ts'
 import {
@@ -20,8 +20,8 @@ import {
   createDefaultEpVoxel as createDefaultShiftVoxel,
   defaultDecayParams,
   defaultEpParams as defaultShiftParams,
-} from './afterLastShift/epParams.ts'
-import type { DecayParams, EpParams as ShiftEpParams } from './afterLastShift/epParams.ts'
+} from './weathering/epParams.ts'
+import type { DecayParams, EpParams as ShiftEpParams } from './weathering/epParams.ts'
 import { defaultTerrainParams, normalizeTerrainPatch } from './terrainParams.ts'
 import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import { defaultHeightGradient } from './heightGradient.ts'
@@ -53,6 +53,13 @@ function App() {
   const [decayParams, setDecayParams] = useState<DecayParams>(defaultDecayParams)
   const [decayReset, setDecayReset] = useState(0)
   const [townDecay, setTownDecay] = useState(0)
+  const [ageReadout, setAgeReadout] = useState<{ lines: string[]; waterNote: boolean }>({
+    lines: [],
+    waterNote: false,
+  })
+  const onAgeReadout = useCallback((lines: string[], waterNote: boolean) => {
+    setAgeReadout({ lines, waterNote })
+  }, [])
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -134,7 +141,7 @@ function App() {
             gridReset={gridReset}
           />
         ) : mode === 'shift' ? (
-          <AfterLastShiftScene
+          <WeatheringScene
             terrain={shiftTerrain}
             voxel={shiftVoxel}
             ep={shiftParams}
@@ -144,6 +151,7 @@ function App() {
             decay={decayParams}
             decayReset={decayReset}
             onTownDecay={setTownDecay}
+            onAgeReadout={onAgeReadout}
           />
         ) : showSim ? (
           <HeightMapView
@@ -203,6 +211,7 @@ function App() {
         onDecayChange={(patch) => setDecayParams((current) => ({ ...current, ...patch }))}
         onResetDecay={() => setDecayReset((value) => value + 1)}
         townDecay={townDecay}
+        ageReadout={ageReadout}
         firstPerson={
           mode === 'ep' ? epFirstPerson : mode === 'shift' ? shiftFirstPerson : firstPerson
         }

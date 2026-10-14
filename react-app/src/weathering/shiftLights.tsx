@@ -51,12 +51,13 @@ export function stageLightSample(
 ): StageLightSample {
   const wear = cellWear(cell.age, tuning.thresholds)
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
-  const bulbY = cell.baseY + Math.max(cell.height, 1) * STORY * 0.78
+  const scale = Math.max(0.2, layout.buildingScale ?? 1)
+  const bulbY = cell.baseY + Math.max(cell.height, 1) * STORY * 0.78 * scale
   const ox = ((cell.ix * 17 + cell.iz * 3) % 5) - 2
   const oz = ((cell.iz * 13 + cell.ix) % 5) - 2
   const barrelX = cx + ox * 0.18
   const barrelZ = cz + oz * 0.18
-  const barrelY = cell.baseY + 0.42
+  const barrelY = cell.baseY + 0.42 * scale
 
   const flutter = Math.abs(
     Math.sin(time * 21 + cell.ix * 1.7) * Math.sin(time * 13.4 + cell.iz * 2.2),
@@ -153,6 +154,7 @@ export function StageLightBudget({
       }
       const sample = stageLightSample(pick.cell, layoutRef.current, clock.elapsedTime, tuning)
       light.position.set(sample.x, sample.y, sample.z)
+      light.distance = 9 * Math.max(0.2, layoutRef.current.buildingScale ?? 1)
       light.color.copy(scratch.copy(BULB).lerp(FIRE, sample.fireMix))
       light.intensity = sample.intensity
     }

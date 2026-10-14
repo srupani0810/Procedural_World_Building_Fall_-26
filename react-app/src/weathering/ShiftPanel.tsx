@@ -3,7 +3,8 @@ import { Slider } from '../Slider.tsx'
 import { NOISE_OPTIONS, getNoiseOption } from '../terrainParams.ts'
 import type { NoiseId, TerrainParams } from '../terrainParams.ts'
 import type { VoxelParams } from '../voxelParams.ts'
-import type { DecayParams, EpParams } from './epParams.ts'
+import type { BackgroundStageBias, DecayParams, EpParams } from './epParams.ts'
+import { coverageToThreshold, thresholdToCoverage } from './waterMask.ts'
 import {
   AUTO_GROW_FAST_SECONDS,
   AUTO_GROW_SLOW_SECONDS,
@@ -30,7 +31,7 @@ type ShiftPanelProps = {
   townDecay: number
 }
 
-/** Side controls for After the Last Shift. A copy of the EP panel, bound to this tab's state. */
+/** Side controls for Weathering. A copy of the EP panel, bound to this tab's state. */
 export function ShiftPanel({
   params,
   terrain,
@@ -184,9 +185,10 @@ export function ShiftPanel({
         defaultOpen
       >
         <p className="chrome-hint">
-          Invisible until toggled. Cell ids stay put when size or warp changes. Click a lot
-          to stack another story, up to Max height. Autonomous growth claims neighboring
-          lots on a timer. Reset Grid clears claimed lots only.
+          Invisible until toggled. Cell ids stay put when size or warp changes. Building
+          scale changes the house height, not the lot spacing or the footprint. Click a lot
+          to stack another story, up to Max height. Autonomous growth claims a neighboring
+          lot and picks a height from 1 through Max height. Reset Grid clears claimed lots only.
         </p>
         <Slider
           label="Cell size"
@@ -196,6 +198,15 @@ export function ShiftPanel({
           step={0.05}
           display={params.cellSize.toFixed(2)}
           onChange={(cellSize) => onChange({ cellSize })}
+        />
+        <Slider
+          label="Building scale"
+          value={params.buildingScale ?? 3}
+          min={1}
+          max={8}
+          step={0.05}
+          display={`×${(params.buildingScale ?? 3).toFixed(2)}`}
+          onChange={(buildingScale) => onChange({ buildingScale })}
         />
         <Slider
           label="Max height"
@@ -254,12 +265,64 @@ export function ShiftPanel({
         tip="Data layers on the heightfield. The water overlay is a mask preview only."
         defaultOpen
       >
-        <ChromeSection title="Water" tip="Where streams sit on the low ground." defaultOpen>
+        <ChromeSection title="Water" tip="Wetland noise on the low ground." defaultOpen>
           <p className="chrome-hint">
-            Streams grow upstream from low points in the heightfield. The dark sheet follows
-            that mask. A click on water flashes the lot red and does not build. Debug overlay
-            draws the mask itself.
+            Water follows its own noise field, then stays on low ground. Coverage sets the
+            noise threshold, so a higher value wets more of the terrain. A click on water
+            flashes the lot red and does not build.
           </p>
+          <Slider
+            label="Water coverage"
+            value={params.waterCoverage ?? 0.45}
+            min={0}
+            max={1}
+            step={0.01}
+            display={`${Math.round((params.waterCoverage ?? 0.45) * 100)}%`}
+            onChange={(waterCoverage) =>
+              onChange({ waterCoverage, waterNoiseThreshold: coverageToThreshold(waterCoverage) })
+            }
+          />
+          <Slider
+            label="Water noise frequency"
+            value={params.waterNoiseFrequency ?? 0.012}
+            min={0.002}
+            max={0.06}
+            step={0.001}
+            display={(params.waterNoiseFrequency ?? 0.012).toFixed(3)}
+            onChange={(waterNoiseFrequency) => onChange({ waterNoiseFrequency })}
+          />
+          <Slider
+            label="Water noise threshold"
+            value={params.waterNoiseThreshold ?? coverageToThreshold(0.45)}
+            min={-1}
+            max={1}
+            step={0.01}
+            display={(params.waterNoiseThreshold ?? coverageToThreshold(0.45)).toFixed(2)}
+            onChange={(waterNoiseThreshold) =>
+              onChange({
+                waterNoiseThreshold,
+                waterCoverage: thresholdToCoverage(waterNoiseThreshold),
+              })
+            }
+          />
+          <Slider
+            label="Water level"
+            value={params.waterLevel ?? 0.7}
+            min={-0.4}
+            max={2.4}
+            step={0.05}
+            display={(params.waterLevel ?? 0.7).toFixed(2)}
+            onChange={(waterLevel) => onChange({ waterLevel })}
+          />
+          <Slider
+            label="Flow speed"
+            value={params.waterFlow ?? 1}
+            min={0}
+            max={3}
+            step={0.05}
+            display={`${(params.waterFlow ?? 1).toFixed(2)}×`}
+            onChange={(waterFlow) => onChange({ waterFlow })}
+          />
           <label className="chrome-check">
             <span>Debug overlay</span>
             <input
@@ -269,6 +332,134 @@ export function ShiftPanel({
             />
           </label>
         </ChromeSection>
+      </ChromeSection>
+
+      <ChromeSection
+        title="Background Buildings"
+        tip="Neighborhoods of voxel columns around the camera. Separate from lots you click."
+        defaultOpen
+      >
+        <p className="chrome-hint">
+          Scenery only. Density, distance, height, and stage bias rebuild neighborhoods
+          inside the ring around the camera. A block shares a street, a story count, and
+          a decay stage, with open ground between blocks. Building scale starts at the
+          same ×3 as the Grid slider and changes only these houses. They stay out of the
+          age readout. Regenerate rerolls placement and leaves clicked buildings and the
+          terrain where they are.
+        </p>
+        <Slider
+          label="Density"
+          value={params.backgroundDensity ?? 22}
+          min={0}
+          max={64}
+          step={1}
+          display={`${Math.round(params.backgroundDensity ?? 22)}`}
+          onChange={(backgroundDensity) => onChange({ backgroundDensity })}
+        />
+        <Slider
+          label="Building scale"
+          value={params.backgroundBuildingScale ?? params.buildingScale ?? 3}
+          min={1}
+          max={8}
+          step={0.05}
+          display={`×${(params.backgroundBuildingScale ?? params.buildingScale ?? 3).toFixed(2)}`}
+          onChange={(backgroundBuildingScale) => onChange({ backgroundBuildingScale })}
+        />
+        <Slider
+          label="Near distance"
+          value={params.backgroundMinDistance ?? 36}
+          min={12}
+          max={180}
+          step={1}
+          display={`${Math.round(params.backgroundMinDistance ?? 36)}`}
+          onChange={(backgroundMinDistance) => {
+            const far = params.backgroundMaxDistance ?? 110
+            onChange({
+              backgroundMinDistance,
+              backgroundMaxDistance: Math.max(far, backgroundMinDistance + 8),
+            })
+          }}
+        />
+        <Slider
+          label="Far distance"
+          value={params.backgroundMaxDistance ?? 110}
+          min={24}
+          max={260}
+          step={1}
+          display={`${Math.round(params.backgroundMaxDistance ?? 110)}`}
+          onChange={(backgroundMaxDistance) => {
+            const near = params.backgroundMinDistance ?? 36
+            onChange({
+              backgroundMaxDistance,
+              backgroundMinDistance: Math.min(near, backgroundMaxDistance - 8),
+            })
+          }}
+        />
+        <Slider
+          label="Min stories"
+          value={params.backgroundMinStories ?? 2}
+          min={1}
+          max={12}
+          step={1}
+          display={`${Math.round(params.backgroundMinStories ?? 2)}`}
+          onChange={(backgroundMinStories) => {
+            const maxStories = params.backgroundMaxStories ?? 7
+            onChange({
+              backgroundMinStories,
+              backgroundMaxStories: Math.max(maxStories, backgroundMinStories),
+            })
+          }}
+        />
+        <Slider
+          label="Max stories"
+          value={params.backgroundMaxStories ?? 7}
+          min={1}
+          max={16}
+          step={1}
+          display={`${Math.round(params.backgroundMaxStories ?? 7)}`}
+          onChange={(backgroundMaxStories) => {
+            const minStories = params.backgroundMinStories ?? 2
+            onChange({
+              backgroundMaxStories,
+              backgroundMinStories: Math.min(minStories, backgroundMaxStories),
+            })
+          }}
+        />
+        <label className="chrome-field">
+          <span className="chrome-slider-row">
+            <span>Decay stage bias</span>
+            <span className="chrome-slider-value">
+              {(params.backgroundStageBias ?? 'random').replace(/^./, (letter) => letter.toUpperCase())}
+            </span>
+          </span>
+          <select
+            value={params.backgroundStageBias ?? 'random'}
+            onChange={(event) =>
+              onChange({ backgroundStageBias: event.target.value as BackgroundStageBias })
+            }
+          >
+            {(
+              [
+                ['random', 'Random'],
+                ['new', 'New'],
+                ['settled', 'Settled'],
+                ['abandoned', 'Abandoned'],
+                ['reclaimed', 'Reclaimed'],
+              ] as const
+            ).map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="chrome-reset chrome-reset-full"
+          onClick={() => onChange({ backgroundSeed: (params.backgroundSeed ?? 1) + 1 })}
+        >
+          Regenerate
+        </button>
       </ChromeSection>
 
       <ChromeSection

@@ -249,11 +249,11 @@ function buildFollowGroundGeometry(
     positions.setZ(i, n * heightScale + 0.25)
 
     const t = (n + 1) * 0.5
-    // Near-black water. A small height tint keeps the swell readable up close.
-    const shade = 0.02 + t * 0.035
+    // Lift albedo so ridges still read through the haze.
+    const shade = 0.38 + t * 0.52
     colors[i * 3] = shade
-    colors[i * 3 + 1] = shade + 0.004
-    colors[i * 3 + 2] = shade + 0.008
+    colors[i * 3 + 1] = shade + 0.03
+    colors[i * 3 + 2] = shade + 0.06
   }
 
   positions.needsUpdate = true
@@ -305,12 +305,12 @@ function StreamedNoiseGround({
   const genKey = `${terrain.noiseId}|${terrain.frequency}|${terrain.amplitude}|${terrain.octaves}|${terrain.persistence}|${segments}|${heightScale}|${fogDensity}`
 
   const remesh = (ox: number, oz: number, walking: boolean) => {
-    // Orbit keeps the wide sheet (coarse from above). Jump In uses a dense patch
-    // so noise wavelength isn’t averaged out across huge quads.
+    // Orbit keeps the wide sheet, with quad spacing near the pre-520 view (~2.7).
+    // Jump In uses a dense patch so ridges read at eye height.
     const size = walking ? FP_GROUND_SIZE : OVERVIEW_GROUND_SIZE
     const segs = walking
       ? Math.max(72, Math.round(size))
-      : Math.max(48, Math.round(terrain.detail * 1.25))
+      : Math.max(48, Math.round(size / 2.7))
     const next = buildFollowGroundGeometry(ox, oz, size, sample, heightScale, segs)
     geoRef.current?.dispose()
     geoRef.current = next
