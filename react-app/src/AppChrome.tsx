@@ -20,6 +20,8 @@ import {
   createDefaultEpVoxel,
   formatAutoGrow,
 } from './epParams.ts'
+import { ShiftPanel } from './afterLastShift/ShiftPanel.tsx'
+import type { DecayParams, EpParams as ShiftEpParams } from './afterLastShift/epParams.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -48,6 +50,17 @@ type AppChromeProps = {
   onEpTerrainChange: (patch: Partial<TerrainParams>) => void
   epVoxel: VoxelParams
   onEpVoxelChange: (patch: Partial<VoxelParams>) => void
+  shiftParams: ShiftEpParams
+  onShiftChange: (patch: Partial<ShiftEpParams>) => void
+  shiftTerrain: TerrainParams
+  onShiftTerrainChange: (patch: Partial<TerrainParams>) => void
+  shiftVoxel: VoxelParams
+  onShiftVoxelChange: (patch: Partial<VoxelParams>) => void
+  onResetShiftGrid: () => void
+  decayParams: DecayParams
+  onDecayChange: (patch: Partial<DecayParams>) => void
+  onResetDecay: () => void
+  townDecay: number
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -84,6 +97,17 @@ export default function AppChrome({
   onEpTerrainChange,
   epVoxel,
   onEpVoxelChange,
+  shiftParams,
+  onShiftChange,
+  shiftTerrain,
+  onShiftTerrainChange,
+  shiftVoxel,
+  onShiftVoxelChange,
+  onResetShiftGrid,
+  decayParams,
+  onDecayChange,
+  onResetDecay,
+  townDecay,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -100,6 +124,7 @@ export default function AppChrome({
   const showVoxels = mode === 'voxels'
   const showShaders = mode === 'shaders'
   const showEp = mode === 'ep'
+  const showShift = mode === 'shift'
   const study = getShaderStudy(shaderStudy)
   const renderLabel =
     VOXEL_RENDER_OPTIONS.find((item) => item.id === voxelParams.renderMode)?.label ?? '—'
@@ -116,9 +141,11 @@ export default function AppChrome({
       <aside className="chrome-panel" aria-label="Parameters">
         <div className="chrome-panel-header">
           <h2>
-            {showEp
-              ? 'Playground'
-              : showVoxels
+            {showShift
+              ? 'After the Last Shift'
+              : showEp
+                ? 'Playground'
+                : showVoxels
                 ? 'Voxels'
                 : showShaders
                   ? 'Shaders'
@@ -174,6 +201,15 @@ export default function AppChrome({
             onClick={() => onMode('ep')}
           >
             Experiential Playground | EP
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={showShift}
+            className={showShift ? 'is-active' : undefined}
+            onClick={() => onMode('shift')}
+          >
+            After the Last Shift
           </button>
         </div>
 
@@ -422,6 +458,25 @@ export default function AppChrome({
               )}
             </ChromeSection>
           </>
+        ) : null}
+
+        {showShift ? (
+          <ShiftPanel
+            params={shiftParams}
+            terrain={shiftTerrain}
+            voxel={shiftVoxel}
+            firstPerson={firstPerson}
+            onChange={onShiftChange}
+            onTerrainChange={onShiftTerrainChange}
+            onVoxelChange={onShiftVoxelChange}
+            onJumpIn={onJumpIn}
+            onExitFirstPerson={onExitFirstPerson}
+            onResetGrid={onResetShiftGrid}
+            decay={decayParams}
+            onDecayChange={onDecayChange}
+            onResetDecay={onResetDecay}
+            townDecay={townDecay}
+          />
         ) : null}
 
         {showShaders ? (
@@ -806,7 +861,7 @@ export default function AppChrome({
               />
             </ChromeSection>
           </>
-        ) : showEp ? null : (
+        ) : showEp || showShift ? null : (
           <>
             <ChromeSection
               title="Noise"

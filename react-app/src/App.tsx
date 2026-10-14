@@ -6,6 +6,7 @@ import Scene from './Scene.tsx'
 import VoxelScene from './VoxelScene.tsx'
 import ShaderScene from './ShaderScene.tsx'
 import ExperientialScene from './ExperientialScene.tsx'
+import AfterLastShiftScene from './afterLastShift/AfterLastShiftScene.tsx'
 import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion.ts'
 import type { ErosionParams } from './erosion.ts'
 import {
@@ -14,6 +15,13 @@ import {
   defaultEpParams,
 } from './epParams.ts'
 import type { EpParams } from './epParams.ts'
+import {
+  createDefaultEpTerrain as createDefaultShiftTerrain,
+  createDefaultEpVoxel as createDefaultShiftVoxel,
+  defaultDecayParams,
+  defaultEpParams as defaultShiftParams,
+} from './afterLastShift/epParams.ts'
+import type { DecayParams, EpParams as ShiftEpParams } from './afterLastShift/epParams.ts'
 import { defaultTerrainParams, normalizeTerrainPatch } from './terrainParams.ts'
 import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import { defaultHeightGradient } from './heightGradient.ts'
@@ -37,6 +45,14 @@ function App() {
   const [epVoxel, setEpVoxel] = useState<VoxelParams>(() => createDefaultEpVoxel())
   const [epFirstPerson, setEpFirstPerson] = useState(false)
   const [gridReset, setGridReset] = useState(0)
+  const [shiftParams, setShiftParams] = useState<ShiftEpParams>(defaultShiftParams)
+  const [shiftTerrain, setShiftTerrain] = useState<TerrainParams>(() => createDefaultShiftTerrain())
+  const [shiftVoxel, setShiftVoxel] = useState<VoxelParams>(() => createDefaultShiftVoxel())
+  const [shiftFirstPerson, setShiftFirstPerson] = useState(false)
+  const [shiftGridReset, setShiftGridReset] = useState(0)
+  const [decayParams, setDecayParams] = useState<DecayParams>(defaultDecayParams)
+  const [decayReset, setDecayReset] = useState(0)
+  const [townDecay, setTownDecay] = useState(0)
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -70,6 +86,9 @@ function App() {
     }
     if (next !== 'ep') {
       setEpFirstPerson(false)
+    }
+    if (next !== 'shift') {
+      setShiftFirstPerson(false)
     }
   }
 
@@ -113,6 +132,18 @@ function App() {
             firstPerson={epFirstPerson}
             onExitFirstPerson={() => setEpFirstPerson(false)}
             gridReset={gridReset}
+          />
+        ) : mode === 'shift' ? (
+          <AfterLastShiftScene
+            terrain={shiftTerrain}
+            voxel={shiftVoxel}
+            ep={shiftParams}
+            firstPerson={shiftFirstPerson}
+            onExitFirstPerson={() => setShiftFirstPerson(false)}
+            gridReset={shiftGridReset}
+            decay={decayParams}
+            decayReset={decayReset}
+            onTownDecay={setTownDecay}
           />
         ) : showSim ? (
           <HeightMapView
@@ -159,13 +190,30 @@ function App() {
         }
         epVoxel={epVoxel}
         onEpVoxelChange={(patch) => setEpVoxel((current) => ({ ...current, ...patch }))}
-        firstPerson={mode === 'ep' ? epFirstPerson : firstPerson}
+        shiftParams={shiftParams}
+        onShiftChange={(patch) => setShiftParams((current) => ({ ...current, ...patch }))}
+        shiftTerrain={shiftTerrain}
+        onShiftTerrainChange={(patch) =>
+          setShiftTerrain((current) => ({ ...current, ...normalizeTerrainPatch(patch) }))
+        }
+        shiftVoxel={shiftVoxel}
+        onShiftVoxelChange={(patch) => setShiftVoxel((current) => ({ ...current, ...patch }))}
+        onResetShiftGrid={() => setShiftGridReset((value) => value + 1)}
+        decayParams={decayParams}
+        onDecayChange={(patch) => setDecayParams((current) => ({ ...current, ...patch }))}
+        onResetDecay={() => setDecayReset((value) => value + 1)}
+        townDecay={townDecay}
+        firstPerson={
+          mode === 'ep' ? epFirstPerson : mode === 'shift' ? shiftFirstPerson : firstPerson
+        }
         onJumpIn={() => {
           if (mode === 'ep') setEpFirstPerson(true)
+          else if (mode === 'shift') setShiftFirstPerson(true)
           else setFirstPerson(true)
         }}
         onExitFirstPerson={() => {
           if (mode === 'ep') setEpFirstPerson(false)
+          else if (mode === 'shift') setShiftFirstPerson(false)
           else setFirstPerson(false)
         }}
         onResetGrid={() => setGridReset((value) => value + 1)}
