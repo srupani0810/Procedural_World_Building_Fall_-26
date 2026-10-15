@@ -5,7 +5,17 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { createNoise, terrainAmplitude } from './terrainParams.ts'
 import type { TerrainParams } from './terrainParams.ts'
 
-const EYE_HEIGHT = 0.38
+/**
+ * Same lift as the heightfield mesh (`noise * amplitude + 0.25`),
+ * so the walk stands on the visible surface.
+ */
+const GROUND_LIFT = 0.25
+/**
+ * Standing eye height above that surface.
+ * A story is 1.05, and houses draw it at the default building scale of ×3,
+ * about 3.15 — a floor a little over 3 m. Eyes sit near 1.65 of that.
+ */
+const EYE_HEIGHT = 1.65
 const MOVE_SPEED = 3.2
 const LOOK_SENS = 0.0022
 const PITCH_LIMIT = Math.PI / 2 - 0.04
@@ -32,7 +42,7 @@ export function FirstPersonControls({ enabled, terrain, onExit }: FirstPersonCon
 
   const sample = useMemo(() => createNoise(terrain), [terrain])
   const heightScale = terrainAmplitude(terrain)
-  const surfaceAt = (x: number, z: number) => sample(x, z) * heightScale
+  const surfaceAt = (x: number, z: number) => sample(x, z) * heightScale + GROUND_LIFT
 
   // Enter: stand on terrain at the orbit focus; exit once resyncs OrbitControls (not every orbit frame).
   useEffect(() => {

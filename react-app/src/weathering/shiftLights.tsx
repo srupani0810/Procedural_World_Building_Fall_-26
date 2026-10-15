@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Color, type Group, type Mesh, type MeshStandardMaterial, type PointLight } from 'three'
+import { Color, type Group, type MeshStandardMaterial, type PointLight } from 'three'
 import { cellCentroid, cellHasBarrel, cellWear, stageMarks, type GridCell, type GridLayout, type StageThresholds } from './epGrid.ts'
 import type { DecayParams } from './epParams.ts'
 
@@ -181,7 +181,7 @@ export function StageLightBudget({
   )
 }
 
-/** The visible bulb or barrel. Illumination itself comes from the shared budget. */
+/** The barrel fire on an abandoned inhabited lot. Illumination comes from the shared budget. */
 export function CellStageFixture({
   cell,
   cellSize,
@@ -193,24 +193,16 @@ export function CellStageFixture({
   warp: number
   decayRef: { current: DecayParams }
 }) {
-  const bulbMat = useRef<MeshStandardMaterial>(null)
-  const bulbMesh = useRef<Mesh>(null)
   const fireMat = useRef<MeshStandardMaterial>(null)
   const barrel = useRef<Group>(null)
   const flames = useRef<Group>(null)
   const layout = useMemo(() => ({ cellSize, warp }), [cellSize, warp])
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
-  const bulbY = cell.baseY + Math.max(cell.height, 1) * STORY * 0.78
   const ox = ((cell.ix * 17 + cell.iz * 3) % 5) - 2
   const oz = ((cell.iz * 13 + cell.ix) % 5) - 2
 
   useFrame(({ clock }) => {
     const sample = stageLightSample(cell, layout, clock.elapsedTime, tuningFromDecay(decayRef.current))
-    if (bulbMat.current) {
-      bulbMat.current.emissiveIntensity = sample.bulbGlow * 2.2
-      bulbMat.current.emissive.set('#ffe2b8')
-    }
-    if (bulbMesh.current) bulbMesh.current.visible = sample.bulbGlow > 0.04
     if (fireMat.current) {
       fireMat.current.emissiveIntensity = sample.fireGlow * 1.4
     }
@@ -224,17 +216,6 @@ export function CellStageFixture({
 
   return (
     <group>
-      <mesh ref={bulbMesh} position={[cx, bulbY, cz]} raycast={() => null}>
-        <sphereGeometry args={[0.07, 10, 8]} />
-        <meshStandardMaterial
-          ref={bulbMat}
-          color="#1a140e"
-          emissive="#ffe2b8"
-          emissiveIntensity={1}
-          roughness={0.4}
-          metalness={0}
-        />
-      </mesh>
       <group ref={barrel} visible={false} position={[cx + ox * 0.18, cell.baseY, cz + oz * 0.18]}>
         <mesh position={[0, 0.16, 0]} raycast={() => null}>
           <cylinderGeometry args={[0.16, 0.18, 0.32, 8]} />
