@@ -1,7 +1,15 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Color, type Group, type MeshStandardMaterial, type PointLight } from 'three'
-import { cellCentroid, cellHasBarrel, cellWear, stageMarks, type GridCell, type GridLayout, type StageThresholds } from './epGrid.ts'
+import { Color, type PointLight } from 'three'
+import {
+  cellCentroid,
+  cellWear,
+  gridKey,
+  stageMarks,
+  type GridCell,
+  type GridLayout,
+  type StageThresholds,
+} from './epGrid.ts'
 import type { DecayParams } from './epParams.ts'
 
 /** Real point lights the stage system may turn on at once. The pool size stays fixed. */
@@ -9,20 +17,44 @@ export const STAGE_LIGHT_BUDGET = 8
 
 const STORY = 1.05
 const BULB = new Color('#ffe2b8')
-const FIRE = new Color('#ff6a1a')
-const scratch = new Color()
 
 function smoothstep(edge0: number, edge1: number, x: number) {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
   return t * t * (3 - 2 * t)
 }
 
+/** Stable 0–1 seed per cell (same legibility standard as other v3 hashes). */
+function flickerSeed(ix: number, iz: number, salt: number) {
+  const n = Math.sin(ix * 127.1 + iz * 311.7 + salt * 74.7) * 43758.5453
+  return n - Math.floor(n)
+}
+
+/**
+ * Seeded on/off cycle for inhabited presence lights.
+ * Period and phase are fixed per cell; duty (from the slider) sets on-fraction.
+ * Evaluated from wall time — not re-randomized each frame.
+ */
+export function inhabitedFlickerLit(
+  ix: number,
+  iz: number,
+  time: number,
+  duty: number,
+): boolean {
+  const uPeriod = flickerSeed(ix, iz, 3)
+  const uPhase = flickerSeed(ix, iz, 11)
+  // Slow, readable cycles: ~2.8s–6.4s full period.
+  const period = 2.8 + uPeriod * 3.6
+  const phase = uPhase * period
+  const onFrac = Math.min(0.78, Math.max(0.18, 0.22 + duty * 0.5))
+  const local = ((time + phase) % period + period) % period
+  return local < period * onFrac
+}
+
 export type StageLightSample = {
   intensity: number
-  /** 0 = incandescent bulb, 1 = barrel fire. */
-  fireMix: number
   bulbGlow: number
-  fireGlow: number
+  /** Discrete inhabited presence lamp state (false when not inhabited). */
+  flickerLit: boolean
   x: number
   y: number
   z: number
@@ -30,19 +62,21 @@ export type StageLightSample = {
 
 export type LightTuning = {
   thresholds: StageThresholds
+  /** On-fraction of each inhabited cell’s seeded flicker cycle (0–1). */
   flickerProbability: number
-  fireBarrelChance: number
 }
 
 export function tuningFromDecay(decay: DecayParams): LightTuning {
   return {
     thresholds: stageMarks(decay.settledAt, decay.abandonedAt, decay.reclaimedAt),
     flickerProbability: decay.flickerProbability,
-    fireBarrelChance: decay.fireBarrelChance,
   }
 }
 
-/** Bulb hangs in the story; a barrel sits on the ground just outside the cell. */
+/**
+ * Stage lights at the bulb. Flicker (discrete on/off) only on cells with
+ * `cell.inhabited === true`. No barrel / candle / ground fires.
+ */
 export function stageLightSample(
   cell: GridCell,
   layout: GridLayout,
@@ -53,41 +87,35 @@ export function stageLightSample(
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
   const scale = Math.max(0.2, layout.buildingScale ?? 1)
   const bulbY = cell.baseY + Math.max(cell.height, 1) * STORY * 0.78 * scale
-  const ox = ((cell.ix * 17 + cell.iz * 3) % 5) - 2
-  const oz = ((cell.iz * 13 + cell.ix) % 5) - 2
-  const barrelX = cx + ox * 0.18
-  const barrelZ = cz + oz * 0.18
-  const barrelY = cell.baseY + 0.42 * scale
-
-  const flutter = Math.abs(
-    Math.sin(time * 21 + cell.ix * 1.7) * Math.sin(time * 13.4 + cell.iz * 2.2),
-  )
-  const flicker = Math.min(1, Math.max(0, tuning.flickerProbability))
-  const dimSteady = 0.62
-  const flickering = 0.28 + 0.72 * flutter
-  const settledFlicker = dimSteady * (1 - flicker) + flickering * flicker
-  const failing = flutter > 0.9 ? 0.42 : 0.05
-  const fireFlicker = 0.62 + 0.38 * flutter
 
   const fresh = 1 - smoothstep(0.2, 1, wear)
   const settled = smoothstep(0.25, 0.85, wear) * (1 - smoothstep(1.15, 1.85, wear))
   const abandoned = smoothstep(1.2, 1.85, wear) * (1 - smoothstep(2.15, 2.95, wear))
-  const inhabited = cellHasBarrel(cell.ix, cell.iz, tuning.fireBarrelChance)
 
-  const bulbGlow =
-    fresh * 1.15 + settled * settledFlicker * 0.7 + (inhabited ? abandoned * 0.08 : abandoned * failing)
-  const fireGlow = inhabited ? abandoned * fireFlicker : 0
-  const intensity = bulbGlow * 2.6 + fireGlow * 3.4
-  const fireMix = intensity > 0.04 ? fireGlow / (bulbGlow + fireGlow + 0.0001) : 0
+  const inhabited = cell.inhabited === true
+  const duty = Math.min(1, Math.max(0, tuning.flickerProbability))
+  const flickerLit = inhabited ? inhabitedFlickerLit(cell.ix, cell.iz, time, duty) : false
+
+  let bulbGlow: number
+  if (inhabited) {
+    // Barely-held presence: clear on vs near-off, not continuous noise.
+    bulbGlow = flickerLit
+      ? fresh * 1.05 + settled * 0.58 + abandoned * 0.22
+      : fresh * 0.06 + settled * 0.04 + abandoned * 0.02
+  } else {
+    // Vacated shells: steady by stage. No flicker — absence is the signal.
+    bulbGlow = fresh * 1.15 + settled * 0.42 + abandoned * 0.04
+  }
+
+  const intensity = bulbGlow * 2.6
 
   return {
     intensity,
-    fireMix,
     bulbGlow,
-    fireGlow,
-    x: cx + (barrelX - cx) * fireMix,
-    y: bulbY + (barrelY - bulbY) * fireMix,
-    z: cz + (barrelZ - cz) * fireMix,
+    flickerLit,
+    x: cx,
+    y: bulbY,
+    z: cz,
   }
 }
 
@@ -111,23 +139,56 @@ function lightScore(
 
 /**
  * Fills a fixed point-light pool from the closest living stage lights.
- * Ambient, hemisphere, and directional lights in the scene stay as they are.
+ * Also emits flicker on/off process-log events when inhabited lamps change state.
  */
 export function StageLightBudget({
   cellsRef,
   layout,
   decayRef,
+  onFlickerEvent,
 }: {
   cellsRef: { current: Map<string, GridCell> }
   layout: GridLayout
   decayRef: { current: DecayParams }
+  /** Fired only when an inhabited cell’s discrete flicker state changes. */
+  onFlickerEvent?: (line: string) => void
 }) {
   const lights = useRef<Array<PointLight | null>>([])
   const layoutRef = useRef(layout)
   layoutRef.current = layout
+  const prevLit = useRef<Map<string, boolean>>(new Map())
+  const onFlickerRef = useRef(onFlickerEvent)
+  onFlickerRef.current = onFlickerEvent
 
   useFrame(({ clock, camera }) => {
     const tuning = tuningFromDecay(decayRef.current)
+    const time = clock.elapsedTime
+    const log = onFlickerRef.current
+
+    for (const cell of cellsRef.current.values()) {
+      if (!cell.inhabited) continue
+      const key = gridKey(cell.ix, cell.iz)
+      const lit = inhabitedFlickerLit(cell.ix, cell.iz, time, tuning.flickerProbability)
+      const prev = prevLit.current.get(key)
+      if (prev === undefined) {
+        prevLit.current.set(key, lit)
+        continue
+      }
+      if (prev !== lit) {
+        prevLit.current.set(key, lit)
+        const line = `${cell.ix},${cell.iz}  flicker ${lit ? 'on' : 'off'}`
+        console.info(`[weathering flicker] ${line}`)
+        log?.(line)
+      }
+    }
+
+    // Drop tracking for lots that were cleared (Reset Grid).
+    if (prevLit.current.size > cellsRef.current.size) {
+      for (const key of [...prevLit.current.keys()]) {
+        if (!cellsRef.current.has(key)) prevLit.current.delete(key)
+      }
+    }
+
     const ranked = [...cellsRef.current.values()]
       .map((cell) => ({
         cell,
@@ -137,7 +198,7 @@ export function StageLightBudget({
           camera.position.x,
           camera.position.y,
           camera.position.z,
-          clock.elapsedTime,
+          time,
           tuning,
         ),
       }))
@@ -152,10 +213,10 @@ export function StageLightBudget({
         light.intensity = 0
         continue
       }
-      const sample = stageLightSample(pick.cell, layoutRef.current, clock.elapsedTime, tuning)
+      const sample = stageLightSample(pick.cell, layoutRef.current, time, tuning)
       light.position.set(sample.x, sample.y, sample.z)
       light.distance = 9 * Math.max(0.2, layoutRef.current.buildingScale ?? 1)
-      light.color.copy(scratch.copy(BULB).lerp(FIRE, sample.fireMix))
+      light.color.copy(BULB)
       light.intensity = sample.intensity
     }
   })
@@ -178,60 +239,5 @@ export function StageLightBudget({
         />
       ))}
     </>
-  )
-}
-
-/** The barrel fire on an abandoned inhabited lot. Illumination comes from the shared budget. */
-export function CellStageFixture({
-  cell,
-  cellSize,
-  warp,
-  decayRef,
-}: {
-  cell: GridCell
-  cellSize: number
-  warp: number
-  decayRef: { current: DecayParams }
-}) {
-  const fireMat = useRef<MeshStandardMaterial>(null)
-  const barrel = useRef<Group>(null)
-  const flames = useRef<Group>(null)
-  const layout = useMemo(() => ({ cellSize, warp }), [cellSize, warp])
-  const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
-  const ox = ((cell.ix * 17 + cell.iz * 3) % 5) - 2
-  const oz = ((cell.iz * 13 + cell.ix) % 5) - 2
-
-  useFrame(({ clock }) => {
-    const sample = stageLightSample(cell, layout, clock.elapsedTime, tuningFromDecay(decayRef.current))
-    if (fireMat.current) {
-      fireMat.current.emissiveIntensity = sample.fireGlow * 1.4
-    }
-    if (barrel.current) barrel.current.visible = sample.fireGlow > 0.04
-    if (flames.current) {
-      const pulse = 0.75 + 0.35 * Math.abs(Math.sin(clock.elapsedTime * 14 + cell.ix))
-      flames.current.visible = sample.fireGlow > 0.04
-      flames.current.scale.setScalar(sample.fireGlow * pulse)
-    }
-  })
-
-  return (
-    <group>
-      <group ref={barrel} visible={false} position={[cx + ox * 0.18, cell.baseY, cz + oz * 0.18]}>
-        <mesh position={[0, 0.16, 0]} raycast={() => null}>
-          <cylinderGeometry args={[0.16, 0.18, 0.32, 8]} />
-          <meshStandardMaterial ref={fireMat} color="#2a211c" emissive="#ff6a1a" emissiveIntensity={0} roughness={1} metalness={0} />
-        </mesh>
-        <group ref={flames} position={[0, 0.36, 0]}>
-          <mesh position={[0, 0.12, 0]} raycast={() => null}>
-            <coneGeometry args={[0.09, 0.28, 6]} />
-            <meshBasicMaterial color="#ffb15a" transparent opacity={0.9} />
-          </mesh>
-          <mesh position={[0.04, 0.2, 0]} raycast={() => null}>
-            <coneGeometry args={[0.05, 0.18, 5]} />
-            <meshBasicMaterial color="#ff6a1a" transparent opacity={0.85} />
-          </mesh>
-        </group>
-      </group>
-    </group>
   )
 }

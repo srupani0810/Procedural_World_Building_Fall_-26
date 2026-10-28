@@ -3,7 +3,7 @@ import { useThree } from '@react-three/fiber'
 import { BufferGeometry, Color, Float32BufferAttribute } from 'three'
 import { cellCentroid, cellCorners, gridKey, type GridCell, type GridLayout } from './epGrid.ts'
 import type { BackgroundStageBias } from './epParams.ts'
-import { createPlasterMaterial, createWearUniforms } from './shiftWear.ts'
+import { cellFailParams, createPlasterMaterial, createWearUniforms } from './shiftWear.ts'
 
 const STORY = 1.05
 const BURY = 0.5
@@ -49,42 +49,34 @@ type BackgroundBuilding = {
   wear: number
   tiltX: number
   tiltZ: number
-  phase: number
 }
 
-function hash(n: number) {
-  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453
-  return x - Math.floor(x)
-}
-
-function wearFor(bias: BackgroundStageBias, roll: number) {
-  if (bias === 'random') return STAGE_WEAR[STAGE_ORDER[Math.floor(roll * STAGE_ORDER.length)] ?? 'new']
+function wearForBias(bias: Exclude<BackgroundStageBias, 'random'>) {
   return STAGE_WEAR[bias]
+}
+
+/** When bias is random: wear cycles by distance ring from the camera anchor. */
+function wearFromDistanceRing(dist: number, near: number, far: number) {
+  const t = Math.min(1, Math.max(0, (dist - near) / Math.max(1, far - near)))
+  const index = Math.min(3, Math.floor(t * STAGE_ORDER.length))
+  return STAGE_WEAR[STAGE_ORDER[index] ?? 'new']
+}
+
+/** Stories rise with distance from the town (farther ring → taller). */
+function storiesFromDistance(dist: number, near: number, far: number, lo: number, hi: number) {
+  const t = Math.min(1, Math.max(0, (dist - near) / Math.max(1, far - near)))
+  return lo + Math.floor(t * (hi - lo + 1e-9))
 }
 
 /** Empty cells kept between neighborhoods so clusters do not merge into one field. */
 const CLUSTER_GAP = 3
 
-type OpenCell = { ix: number; iz: number; x: number; z: number }
-
-function clusterWear(bias: BackgroundStageBias, clusterRoll: number, memberRoll: number) {
-  if (bias !== 'random') return wearFor(bias, memberRoll)
-  const base = Math.min(3, Math.floor(clusterRoll * STAGE_ORDER.length))
-  const drift = hash(clusterRoll * 90 + 4) > 0.5 ? 1 : -1
-  const index = memberRoll < 0.8 ? base : Math.min(3, Math.max(0, base + drift))
-  return STAGE_WEAR[STAGE_ORDER[index] ?? 'new']
-}
-
-function clusterStories(lo: number, hi: number, clusterRoll: number, memberRoll: number) {
-  const base = lo + Math.floor(clusterRoll * (hi - lo + 1))
-  if (hi === lo || memberRoll < 0.8) return base
-  const drift = hash(clusterRoll * 40 + 2) > 0.5 ? 1 : -1
-  return Math.min(hi, Math.max(lo, base + drift))
-}
+type OpenCell = { ix: number; iz: number; x: number; z: number; dist: number }
 
 /**
- * Scenery in neighborhoods of 3–8 lots on the settlement grid.
- * The grid warp already bends each block. A claimed player cell is skipped.
+ * Scenery in neighborhoods on the settlement grid — no hash rolls.
+ * Origins sorted by distance then angle (Regenerate rotates the start sector).
+ * Cluster size grows with distance; stories/wear from distance bands or stage bias.
  */
 export function generateBackgroundBuildings(
   settings: BackgroundSettings,
@@ -105,8 +97,9 @@ export function generateBackgroundBuildings(
   const anchorIx = Math.round(anchorX / size)
   const anchorIz = Math.round(anchorZ / size)
   const reach = Math.ceil(far / size) + 1
-  const seed = settings.seed * 17.13
   const reserved = new Set<string>()
+  // Regenerate rotates which compass sector is preferred first (0..7).
+  const sectorPrefer = ((Math.floor(settings.seed) % 8) + 8) % 8
 
   const spotAt = (ix: number, iz: number): OpenCell | null => {
     if (occupied(ix, iz) || reserved.has(gridKey(ix, iz))) return null
@@ -115,18 +108,27 @@ export function generateBackgroundBuildings(
     if (dist < near || dist > far) return null
     const corners = cellCorners(ix, iz, layout)
     if (blocked(x, z) || corners.some(([cx, cz]) => blocked(cx, cz))) return null
-    return { ix, iz, x, z }
+    return { ix, iz, x, z, dist }
   }
 
-  const seeds: Array<OpenCell & { rank: number }> = []
+  const sectorOf = (ix: number, iz: number) => {
+    const ang = Math.atan2(iz - anchorIz, ix - anchorIx)
+    const u = (ang + Math.PI) / (Math.PI * 2)
+    return Math.floor(u * 8) % 8
+  }
+
+  const seeds: OpenCell[] = []
   for (let dz = -reach; dz <= reach; dz++) {
     for (let dx = -reach; dx <= reach; dx++) {
       const spot = spotAt(anchorIx + dx, anchorIz + dz)
-      if (!spot) continue
-      seeds.push({ ...spot, rank: hash(seed + spot.ix * 19.1 + spot.iz * 23.7) })
+      if (spot) seeds.push(spot)
     }
   }
-  seeds.sort((a, b) => a.rank - b.rank || a.ix - b.ix || a.iz - b.iz)
+  seeds.sort((a, b) => {
+    const sa = (sectorOf(a.ix, a.iz) - sectorPrefer + 8) % 8
+    const sb = (sectorOf(b.ix, b.iz) - sectorPrefer + 8) % 8
+    return sa - sb || a.dist - b.dist || a.iz - b.iz || a.ix - b.ix
+  })
 
   const buildings: BackgroundBuilding[] = []
   const tried = new Set<string>()
@@ -138,12 +140,15 @@ export function generateBackgroundBuildings(
     const room = count - buildings.length
     if (room < 3) break
 
-    const roll = hash(seed + origin.ix * 13.7 + origin.iz * 9.1)
-    const want = 3 + Math.floor(hash(seed + origin.ix * 3.3 + origin.iz) * Math.min(6, room - 2))
-    const alongX = roll > 0.5
-    const step = hash(seed + origin.iz * 4.4) > 0.5 ? 1 : -1
-    const side = hash(seed + origin.ix * 4.4) > 0.5 ? 1 : -1
-    const depth = want >= 5 && hash(seed + want + origin.ix) > 0.35 ? 2 : 1
+    // Farther from town → larger block; grow along the stronger radial axis, outward.
+    const band = Math.min(1, Math.max(0, (origin.dist - near) / Math.max(1, far - near)))
+    const want = Math.min(room, 3 + Math.floor(band * 5))
+    const rdx = origin.ix - anchorIx
+    const rdz = origin.iz - anchorIz
+    const alongX = Math.abs(rdx) >= Math.abs(rdz)
+    const step = alongX ? (rdx >= 0 ? 1 : -1) : (rdz >= 0 ? 1 : -1)
+    const side = alongX ? (rdz >= 0 ? 1 : -1) : (rdx >= 0 ? 1 : -1)
+    const depth = want >= 5 ? 2 : 1
     const length = depth === 1 ? want : Math.ceil(want / depth)
     const cells: OpenCell[] = []
 
@@ -170,19 +175,18 @@ export function generateBackgroundBuildings(
     }
 
     const kept = cells.slice(0, want)
-    const clusterRoll = hash(seed + origin.ix * 41 + origin.iz * 17)
-    const tiltX = (hash(seed + origin.ix * 5) - 0.5) * 0.05
-    const tiltZ = (hash(seed + origin.iz * 5) - 0.5) * 0.05
-    const phase = hash(seed + origin.ix * 8 + origin.iz)
+    const tilt = { tiltX: 0, tiltZ: -0.22 }
 
     for (const cell of kept) {
-      const member = hash(seed + cell.ix * 11.3 + cell.iz * 7.1)
-      const fit = 0.9 + hash(seed + cell.ix * 1.7 + cell.iz) * 0.04
-      const half = lotHalf(cell.ix, cell.iz, layout, fit)
+      const half = lotHalf(cell.ix, cell.iz, layout, 0.92)
       let floor = heightAt(cell.x, cell.z)
       for (const [cx, cz] of cellCorners(cell.ix, cell.iz, layout)) {
         floor = Math.max(floor, heightAt(cx, cz))
       }
+      const wear =
+        settings.stageBias === 'random'
+          ? wearFromDistanceRing(cell.dist, near, far)
+          : wearForBias(settings.stageBias)
       buildings.push({
         id: `${settings.seed}:${cell.ix},${cell.iz}`,
         ix: cell.ix,
@@ -190,13 +194,12 @@ export function generateBackgroundBuildings(
         x: cell.x,
         z: cell.z,
         floor,
-        stories: clusterStories(lo, hi, clusterRoll, member),
+        stories: storiesFromDistance(cell.dist, near, far, lo, hi),
         hx: half.hx,
         hz: half.hz,
-        wear: clusterWear(settings.stageBias, hash(seed + origin.ix * 29 + origin.iz), member),
-        tiltX: tiltX + (member - 0.5) * 0.012,
-        tiltZ: tiltZ + (hash(seed + cell.iz) - 0.5) * 0.012,
-        phase,
+        wear,
+        tiltX: tilt.tiltX,
+        tiltZ: tilt.tiltZ,
       })
       for (let gz = -CLUSTER_GAP; gz <= CLUSTER_GAP; gz++) {
         for (let gx = -CLUSTER_GAP; gx <= CLUSTER_GAP; gx++) {
@@ -279,18 +282,22 @@ function columnGeometry(building: BackgroundBuilding) {
   const col: number[] = []
   const edge: number[] = []
   for (let s = 0; s < building.stories; s++) {
+    // Odd stories step back slightly — readable setback, not footprint jitter.
     const inset = s % 2 === 0 ? 1 : 0.86
-    const jx = (hash(building.phase * 20 + s * 4.1) - 0.5) * 0.08
-    const jz = (hash(building.phase * 20 + s * 6.3) - 0.5) * 0.08
     const y0 = s === 0 ? -BURY : s * STORY
     const y1 = (s + 1) * STORY
-    pushBox(pos, nrm, col, edge, jx, jz, y0, y1, building.hx * inset, building.hz * inset)
+    pushBox(pos, nrm, col, edge, 0, 0, y0, y1, building.hx * inset, building.hz * inset)
   }
   const geo = new BufferGeometry()
   const count = pos.length / 3
   const noise = new Float32Array(count)
   for (let i = 0; i < count; i++) {
-    noise[i] = hash(pos[i * 3]! * 10 + pos[i * 3 + 2]! * 4 + pos[i * 3 + 1]!)
+    const x = pos[i * 3]!
+    const y = pos[i * 3 + 1]!
+    const z = pos[i * 3 + 2]!
+    let n = (x * 0.37 + z * 0.23 + y * 0.11) % 1
+    if (n < 0) n += 1
+    noise[i] = n
   }
   geo.setAttribute('position', new Float32BufferAttribute(pos, 3))
   geo.setAttribute('normal', new Float32BufferAttribute(nrm, 3))
@@ -309,10 +316,20 @@ const BackgroundColumn = memo(function BackgroundColumn({
   buildingScale: number
 }) {
   const geo = useMemo(() => columnGeometry(building), [building])
-  const wear = useMemo(
-    () => createWearUniforms(0, building.tiltX, building.tiltZ, PAINT),
-    [building.tiltX, building.tiltZ],
-  )
+  const wear = useMemo(() => {
+    const fail = cellFailParams(building.ix, building.iz, building.stories)
+    return createWearUniforms(
+      0,
+      building.tiltX,
+      building.tiltZ,
+      PAINT,
+      building.x,
+      building.z,
+      fail.failSide,
+      fail.roofSeed,
+      fail.windowSeed,
+    )
+  }, [building.tiltX, building.tiltZ, building.ix, building.iz, building.x, building.z, building.stories])
   const material = useMemo(() => {
     wear.uWear.value = building.wear
     wear.uWearIntensity.value = 1

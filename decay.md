@@ -53,6 +53,8 @@ So across a town at one moment, lots look like a **mix** (different times since 
 
 **Working implication until sources are locked:** prefer paint/rust and failed enclosure cues earlier in the stage sequence; introduce partial geometric collapse later and sparsely; never total wipe. Revisable when the author settles a research canon.
 
+**Weathering v3 visual rule (settled):** never dissolve solid wall mass into a wireframe/lattice or wash the shell into terrain. Mass stays mass — upper stories stay square/plumb; wear is surface (paint loss, staining) and metal rust streaks, not warped masonry. Settled/abandoned lead with water-driven staining, paint chalking, and rust dripping from metal edges; reclaimed adds *localized* failure (sagging lintel / diagonal brace on one bay, cladding void, broken panes) plus sparse base scrap/debris — shell never erased.
+
 **Concurrent growth** belongs in the same economy: capital and attention relocating. Some lots keep being claimed and stacked while others age into shells. That uneven field supports the leftover-shell claim — discard is selective; care moves elsewhere. In argument and in design emphasis, **lead with how decay unfolds on the abandoned cell**, then widen to growth relocating beside it. Do not open on bustling new construction and treat shells as backdrop.
 
 ---
@@ -90,11 +92,25 @@ Nothing in the decay clock is a catastrophe trigger. Stages advance because care
 
 ### Growth and decay running concurrently
 
-The town can still claim and stack while other cells abandon and reclaim. That is capital/attention relocating — not a single end-state of ruin. Design should keep both readable, with **decay’s sequence primary** in how the concept is taught and how new systems are framed.
+The town can still claim new empty lots while other cells abandon and reclaim. That is capital/attention relocating — not a single end-state of ruin. Design should keep both readable, with **decay’s sequence primary** in how the concept is taught and how new systems are framed.
+
+**Player agency (settled for Weathering v3):** the player may **only claim empty lots**. Existing shells cannot be cleared, demolished, restored, stacked further, or otherwise intervened on. A new claim starts held (stage new) and enters the same gradual, staggered vacating as everything else. Growth is adding automation-era structure into an already unevenly decaying field — not repairing or erasing leftovers.
+
+### Uneven vacating, not a synchronized ruin clock
+
+Vacating spreads at **per-cell offsets and rates from visible spatial position** (rim vs core, soft west→east bias) so a viewer can sense uneven automation adoption through the town — not one global countdown and not a hidden hash. A Phase 1 timeline intro may scrub history from an intact held city toward a **mixed** end state (held / thinning / vacated / impacted stages present together). That end is never “every cell impacted at once,” and no cell is wiped during the sequence; shells persist. Phase 2 continues aging from wherever each lot landed.
+
+### Presence flicker (settled for Weathering v3)
+
+Window-lamp flicker is a **legible presence signal**, not atmosphere noise. It appears **only on cells tagged `inhabited`**. Which lots are inhabited is a **central-share rule** (closest lots to origin fill up to the panel fraction) — not a per-cell hash. Timing of the on/off cycle is a **stable per-cell period/phase** (slow, duty from the panel) so the lamp reads as presence, not noise — evaluated from clock time, not re-randomized every frame. Vacated shells do not flutter. No barrel / candle / ground fires. State changes are logged as process events (`flicker on` / `flicker off`) so the behavior is demonstrable as designed.
 
 ### Architecture from neighbor rules, not hand-authored monuments
 
 Houses emerge from grid, height, and adjacency (walls, arches, stairs, roofs). They are not authored ruin set-pieces. The leftover shell is therefore a **procedural industrial remainder** — form that came from settlement rules, then outlived the care that would have kept it “new.” That resists ruin-as-composition: the abandoned thing was produced by the same system that still grows elsewhere.
+
+**Massing decisions are legible (settled for Weathering v3):** story count, swatch, roof kind, tarps, failure bay, inhabited tags, and idle-growth picks must come from **observable inputs** (neighbor configuration, height, distance/density rings, panel shares) — not per-cell hash rolls or `Math.random`. Every visual difference between two shells should be explainable in one sentence using something a viewer can see. Process-log lines state the rule used.
+
+**Seed layout vacancies (settled for Weathering v3):** Phase 1 does **not** fill every disk cell. Corridors are **rule-based but uneven**: the same rim + west/north spatial signals as vacate clocks set per-line period and phase (tighter near the core, looser at the rim, shifted by direction) — not a fixed every-Nth graph-paper lattice. A **max-block floor** then forces a corridor at the midpoint of any axis-aligned claimed run longer than 3, so bias tightening cannot leave fused pockets larger than roughly 3×3. Empty seed lots stay claimable in Phase 2 (add-only). Tarps must not hang past one lot (`cellSize`) so they cannot visually bridge a street. Process log records each vacancy reason (bias vs max-block floor).
 
 Background scenery and player lots both sit in this economy of attention; new work should not invent a separate “ruination aesthetic” that ignores the per-cell rule logic.
 
@@ -141,11 +157,22 @@ Candidates to discuss before locking (examples only, not yet canon):
 - Whether the mixed infrastructure reference later needs a **primary** type for clarity, or stays deliberately plural
 - Concrete referent sites or images the author wants treated as working references (ask; do not invent a canon)
 - How current “reclaimed” visuals (ground tint, sag) should change if they still read as erasure rather than impacted presence
-- What the player/system can do (if anything) that counts as **upkeep** interrupting the gradual vacating — or whether they only witness it
+- Whether any future system should count as **upkeep** that interrupts gradual vacating (v3 settles: player only witnesses existing shells and may claim empty lots)
 - Which industries or building types that future leaves behind as shells
 - Author-approved research canon for impact *process* (past vacancy physics as evidence; automation literature as driver)
 - Whether strip-out / vandalism after vacancy belongs in the system or stays outside scope
 - Whether player-built lots and background shells should share the same research-led mix of impact modes
+
+---
+
+## References
+
+Drop sources here as they’re found — games, articles, photography, case studies, anything relevant. Nothing here is locked as a precedent for the project until explicitly confirmed.
+
+- ![[detail_focus-4-main_1-1200x630.jpg]]
+- ![[3500.jpeg]]
+- ![[9206a17d606ec96a13353bfeead5dedf.jpg]]
+- ![[95fe3643e9d2e8e534484560e3ff62bb.jpg]]
 
 ---
 

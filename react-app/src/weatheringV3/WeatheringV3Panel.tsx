@@ -11,6 +11,12 @@ import {
   createDefaultEpVoxel,
   formatAutoGrow,
 } from './epParams.ts'
+import type { TownPhase } from './timeline.ts'
+import {
+  INTRO_DURATION,
+  formatPhaseHint,
+  formatPhaseLabel,
+} from './timeline.ts'
 
 type WeatheringV3PanelProps = {
   params: EpParams
@@ -28,6 +34,12 @@ type WeatheringV3PanelProps = {
   onResetDecay: () => void
   /** 0–1 height-weighted wear across claimed lots. */
   townDecay: number
+  phase: TownPhase
+  timelineT: number
+  timelinePlaying: boolean
+  onTimelineT: (t: number) => void
+  onTimelinePlaying: (playing: boolean) => void
+  onEnterOngoing: () => void
 }
 
 /** Side controls for Weathering v3. Independent copy of Weathering's ShiftPanel. */
@@ -46,12 +58,71 @@ export function WeatheringV3Panel({
   onDecayChange,
   onResetDecay,
   townDecay,
+  phase,
+  timelineT,
+  timelinePlaying,
+  onTimelineT,
+  onTimelinePlaying,
+  onEnterOngoing,
 }: WeatheringV3PanelProps) {
   const option = getNoiseOption(terrain.noiseId)
   const extra = terrain.extras[terrain.noiseId]
+  const introActive = phase === 'intro'
 
   return (
     <>
+      <ChromeSection
+        title="Timeline"
+        tip="Phase 1 is a history scrubber — staggered vacating, mixed end state. Phase 2 continues from wherever each lot landed."
+        defaultOpen
+      >
+        <p className="chrome-hint" style={{ color: introActive ? '#7ec8ff' : '#c4e07a' }}>
+          {formatPhaseLabel(phase, timelineT)}
+        </p>
+        <p className="chrome-hint">{formatPhaseHint(phase)}</p>
+        <Slider
+          label="Intro time"
+          value={timelineT}
+          min={0}
+          max={INTRO_DURATION}
+          step={0.1}
+          display={`${timelineT.toFixed(1)}s / ${INTRO_DURATION}s`}
+          onChange={(t) => {
+            onTimelinePlaying(false)
+            onTimelineT(t)
+          }}
+        />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+          <button
+            type="button"
+            className="chrome-reset"
+            disabled={!introActive}
+            onClick={() => onTimelinePlaying(!timelinePlaying)}
+          >
+            {timelinePlaying ? 'Pause' : 'Play'}
+          </button>
+          <button
+            type="button"
+            className="chrome-reset"
+            disabled={!introActive}
+            onClick={() => {
+              onTimelinePlaying(false)
+              onTimelineT(0)
+            }}
+          >
+            Rewind
+          </button>
+          <button
+            type="button"
+            className="chrome-reset"
+            disabled={!introActive}
+            onClick={onEnterOngoing}
+          >
+            Skip to Phase 2
+          </button>
+        </div>
+      </ChromeSection>
+
       <ChromeSection
         title="Atmosphere"
         tip="Dark mist and filigree. Noise shapes the ground; you place every voxel."
@@ -60,7 +131,7 @@ export function WeatheringV3Panel({
         <p className="chrome-hint">
           Orbit: light haze only at the field rim. Jump In: stronger endless horizon fog.
           Density thickens the walk fade. It stays the baseline; town decay adds haze on
-          top. Click ground or a face to add; hold (~400ms) to remove.
+          top. In Phase 2, click empty lots to claim; shells are never cleared.
         </p>
         <Slider
           label="Fog density"
@@ -184,10 +255,9 @@ export function WeatheringV3Panel({
         defaultOpen
       >
         <p className="chrome-hint">
-          Invisible until toggled. Cell ids stay put when size or warp changes. Building
-          scale changes the house height, not the lot spacing or the footprint. Click a lot
-          to stack another story, up to Max height. Autonomous growth claims a neighboring
-          lot and picks a height from 1 through Max height. Reset Grid clears claimed lots only.
+          Phase 1 is watch-only. In Phase 2, click an empty lot to claim it (starts held/new);
+          existing shells cannot be stacked, cleared, or restored. Autonomous growth claims
+          empty neighbors only. Reset Grid reseeds the intact city and returns to the intro.
         </p>
         <Slider
           label="Cell size"
@@ -477,16 +547,21 @@ export function WeatheringV3Panel({
           onChange={(wearIntensity) => onDecayChange({ wearIntensity })}
         />
         <Slider
-          label="Flicker probability"
+          label="Inhabited flicker duty"
           value={decay.flickerProbability}
           min={0}
           max={1}
           step={0.01}
-          display={`${Math.round(decay.flickerProbability * 100)}%`}
+          display={`${Math.round(decay.flickerProbability * 100)}% on`}
           onChange={(flickerProbability) => onDecayChange({ flickerProbability })}
         />
+        <p className="chrome-hint">
+          Inhabited share marks the most central lots (closest to origin) up to this fraction.
+          Those lots get a slow on/off window-lamp cycle (presence still holding). Vacated
+          shells stay steady/dark — no barrels or ground fires.
+        </p>
         <Slider
-          label="Fire-barrel chance"
+          label="Inhabited share"
           value={decay.fireBarrelChance}
           min={0}
           max={1}

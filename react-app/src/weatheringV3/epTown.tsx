@@ -14,27 +14,54 @@ import {
   cellStage,
   cellWear,
   townDecayShare,
-  cellHasBarrel,
   stageMarks,
   gridKey,
   neighborCell,
-  pickGrowthCell,
   type GridCell,
   type GridLayout,
   type XZ,
 } from './epGrid.ts'
 import {
+  createDebrisMaterial,
+  createGlassMaterial,
   createGlowMaterial,
   createPlasterMaterial,
   createTarpMaterial,
   createWearUniforms,
 } from './shiftWear.ts'
-import { CellStageFixture, StageLightBudget } from './shiftLights.tsx'
+import { StageLightBudget } from './shiftLights.tsx'
 import type { DecayParams } from './epParams.ts'
+import {
+  ageAtIntroTime,
+  cellVacateProfile,
+  seedLayoutRuleSummary,
+  type TownPhase,
+} from './timeline.ts'
+import {
+  SIDE_NAMES,
+  colorFromNeighborMajority,
+  describeClaimDecision,
+  describeLotMassing,
+  failFromExposure,
+  glassBreakWear,
+  glassCrackWear,
+  glassStateAtWear,
+  heightFromNeighbors,
+  listSeedVacancies,
+  openSidesAtLot,
+  pickGrowthCellByDensity,
+  shouldClaimInhabited,
+  sideDistFromFail,
+  tarpPlan,
+  type CardinalNeighbors,
+} from './lotRules.ts'
 
 export const TOWN_STORY = 1.05
-const COLUMN_R = 0.2
+/** Corner pier radius — keep small so footprints stay rectilinear, not crystal-chamfered. */
+const COLUMN_R = 0.06
 const WALL_T = 0.16
+/** How far open-corner columns pull inward from the lot corner (0 = flush square). */
+const CORNER_INSET = 0.04
 
 /** Claimed settlement cell. Identity and corners live on the grid. */
 export type TownCell = GridCell
@@ -58,11 +85,12 @@ export function storyFaceOpen(iy: number, neighbor: { height: number } | null) {
   return !neighbor || iy >= neighbor.height
 }
 
+/** Muted industrial shells — no neon. Glow field is warm practical bulb tint for window strips. */
 export const TOWN_SWATCHES = [
-  { id: 'magenta', label: 'Magenta', plaster: '#2a2428', glow: '#ff2bd6' },
-  { id: 'cyan', label: 'Cyan', plaster: '#1c2428', glow: '#3ee0ff' },
-  { id: 'red', label: 'Red', plaster: '#2a1818', glow: '#ff3344' },
-  { id: 'ash', label: 'Ash', plaster: '#16181b', glow: '#9aa3ad' },
+  { id: 'concrete', label: 'Concrete', plaster: '#7a7872', glow: '#d8b878' },
+  { id: 'brick', label: 'Brick', plaster: '#6b453c', glow: '#d8b878' },
+  { id: 'zinc', label: 'Zinc', plaster: '#6a6e6c', glow: '#d8b878' },
+  { id: 'ash', label: 'Ash', plaster: '#3a3c3e', glow: '#d8b878' },
 ] as const
 
 type V = [number, number, number]
@@ -72,15 +100,11 @@ const plasterRgb = TOWN_SWATCHES.map((swatch) => {
   const c = new Color(swatch.plaster)
   return [c.r, c.g, c.b] as RGB
 })
-const glowRgb = TOWN_SWATCHES.map((swatch) => {
-  const c = new Color(swatch.glow)
-  return [c.r, c.g, c.b] as RGB
-})
-
-function hash2(ix: number, iz: number, salt: number) {
-  const n = Math.sin(ix * 127.1 + iz * 311.7 + salt * 17.3) * 43758.5453
-  return n - Math.floor(n)
-}
+/** Shared dim amber/incandescent for inhabited window strips — not swatch neon. */
+const PRACTICAL_GLOW: RGB = (() => {
+  const c = new Color('#d8b878')
+  return [c.r * 0.55, c.g * 0.55, c.b * 0.55] as RGB
+})()
 
 function pushQuad(
   dst: number[],
@@ -138,7 +162,12 @@ function toGeo(pos: number[], nrm: number[], col: number[], edge: number[], drap
     const count = pos.length / 3
     const noise = new Float32Array(count)
     for (let i = 0; i < count; i++) {
-      noise[i] = hash2(pos[i * 3] * 10, pos[i * 3 + 2] * 10, pos[i * 3 + 1])
+      // Continuous world-position field for wear mottling — not a discrete massing roll.
+      const x = pos[i * 3]!
+      const y = pos[i * 3 + 1]!
+      const z = pos[i * 3 + 2]!
+      noise[i] = (x * 0.37 + z * 0.23 + y * 0.11) % 1
+      if (noise[i]! < 0) noise[i]! += 1
     }
     const edgeData = edge.length === count ? edge : new Float32Array(count)
     const drapeData = drape && drape.length === count * 3 ? drape : new Float32Array(count * 3)
@@ -150,6 +179,84 @@ function toGeo(pos: number[], nrm: number[], col: number[], edge: number[], drap
     geo.setAttribute('aDrape', new Float32BufferAttribute(drapeData, 3))
   }
   return geo
+}
+
+/** One window opening’s glazing meta — order is fail-bay → adjacent → opposite, then lower story first. */
+export type GlassPane = {
+  side: number
+  story: number
+  sideDist: number
+  order: number
+  crackAt: number
+  breakAt: number
+}
+
+type GlassDraft = {
+  side: number
+  story: number
+  sideDist: number
+  vertStart: number
+  vertCount: number
+}
+
+function pushGlassQuad(
+  dst: number[],
+  nrm: number[],
+  a: V,
+  b: V,
+  c: V,
+  d: V,
+  outwardFrom: V,
+) {
+  const ax = b[0] - a[0]
+  const ay = b[1] - a[1]
+  const az = b[2] - a[2]
+  const bx = c[0] - a[0]
+  const by = c[1] - a[1]
+  const bz = c[2] - a[2]
+  let nx = ay * bz - az * by
+  let ny = az * bx - ax * bz
+  let nz = ax * by - ay * bx
+  const len = Math.hypot(nx, ny, nz) || 1
+  nx /= len
+  ny /= len
+  nz /= len
+  const toward =
+    nx * (a[0] - outwardFrom[0]) + ny * (a[1] - outwardFrom[1]) + nz * (a[2] - outwardFrom[2])
+  const flip = toward < 0
+  const tris = flip
+    ? [
+        [a, c, b],
+        [a, d, c],
+      ]
+    : [
+        [a, b, c],
+        [a, c, d],
+      ]
+  const fn = flip ? ([-nx, -ny, -nz] as V) : ([nx, ny, nz] as V)
+  for (const [p, q, r] of tris) {
+    for (const v of [p, q, r]) {
+      dst.push(v[0], v[1], v[2])
+      nrm.push(fn[0], fn[1], fn[2])
+    }
+  }
+  return 6
+}
+
+function toGlassGeo(pos: number[], nrm: number[], order: number[], sideDist: number[]) {
+  const geo = new BufferGeometry()
+  if (pos.length > 0) {
+    geo.setAttribute('position', new Float32BufferAttribute(pos, 3))
+    geo.setAttribute('normal', new Float32BufferAttribute(nrm, 3))
+    geo.setAttribute('aOrder', new Float32BufferAttribute(order, 1))
+    geo.setAttribute('aSideDist', new Float32BufferAttribute(sideDist, 1))
+  }
+  return geo
+}
+
+function faceLetter(side: number) {
+  const name = SIDE_NAMES[side] ?? 'south'
+  return name.charAt(0).toUpperCase()
 }
 
 type Side = { open: boolean; neighbor: TownCell | null; a: XZ; b: XZ; inward: XZ }
@@ -219,7 +326,13 @@ function addArchWall(
   gpos: number[],
   gnrm: number[],
   gcol: number[],
+  jpos: number[],
+  jnrm: number[],
+  drafts: GlassDraft[],
   side: Side,
+  sideIndex: number,
+  story: number,
+  failSide: number,
   y0: number,
   y1: number,
   rgb: RGB,
@@ -287,6 +400,26 @@ function addArchWall(
     pushQuad(gpos, gnrm, gcol, [], slit, slitB, slitT, slitT0, glow, [center[0] - inn[0], center[1], center[2] - inn[1]])
   }
 
+  // Thin glazing plane in the ground-story opening (not a dark void at held).
+  {
+    const inset = WALL_T * 0.55
+    const gy0 = y0 + 0.06
+    const gy1 = yMid - 0.04
+    const ga: V = [leftX + inn[0] * inset, gy0, leftZ + inn[1] * inset]
+    const gb: V = [rightX + inn[0] * inset, gy0, rightZ + inn[1] * inset]
+    const gc: V = [rightX + inn[0] * inset, gy1, rightZ + inn[1] * inset]
+    const gd: V = [leftX + inn[0] * inset, gy1, leftZ + inn[1] * inset]
+    const vertStart = jpos.length / 3
+    const vertCount = pushGlassQuad(jpos, jnrm, ga, gb, gc, gd, center)
+    drafts.push({
+      side: sideIndex,
+      story,
+      sideDist: sideDistFromFail(sideIndex, failSide),
+      vertStart,
+      vertCount,
+    })
+  }
+
   const wx0 = leftX + (rightX - leftX) * 0.35
   const wz0 = leftZ + (rightZ - leftZ) * 0.35
   const wx1 = leftX + (rightX - leftX) * 0.65
@@ -314,7 +447,13 @@ function addWindowWall(
   gpos: number[],
   gnrm: number[],
   gcol: number[],
+  jpos: number[],
+  jnrm: number[],
+  drafts: GlassDraft[],
   side: Side,
+  sideIndex: number,
+  story: number,
+  failSide: number,
   y0: number,
   y1: number,
   rgb: RGB,
@@ -355,6 +494,27 @@ function addWindowWall(
   prism(x0, z0, leftX, leftZ, sill, head)
   prism(rightX, rightZ, x1, z1, sill, head)
   prism(x0, z0, x1, z1, head, y1)
+
+  // Full opening glazing plane — reads as glass at held, not a hole.
+  {
+    const inset = WALL_T * 0.55
+    const gy0 = sill + 0.02
+    const gy1 = head - 0.02
+    const ga: V = [leftX + inn[0] * inset, gy0, leftZ + inn[1] * inset]
+    const gb: V = [rightX + inn[0] * inset, gy0, rightZ + inn[1] * inset]
+    const gc: V = [rightX + inn[0] * inset, gy1, rightZ + inn[1] * inset]
+    const gd: V = [leftX + inn[0] * inset, gy1, leftZ + inn[1] * inset]
+    const vertStart = jpos.length / 3
+    const vertCount = pushGlassQuad(jpos, jnrm, ga, gb, gc, gd, center)
+    drafts.push({
+      side: sideIndex,
+      story,
+      sideDist: sideDistFromFail(sideIndex, failSide),
+      vertStart,
+      vertCount,
+    })
+  }
+
   const glowY = sill + (head - sill) * 0.35
   const a: V = [leftX + inn[0] * (WALL_T + 0.02), glowY, leftZ + inn[1] * (WALL_T + 0.02)]
   const b: V = [rightX + inn[0] * (WALL_T + 0.02), glowY, rightZ + inn[1] * (WALL_T + 0.02)]
@@ -406,21 +566,22 @@ function addRoof(
   nrm: number[],
   col: number[],
   edge: number[],
-  gpos: number[],
-  gnrm: number[],
-  gcol: number[],
+  _gpos: number[],
+  _gnrm: number[],
+  _gcol: number[],
   cell: TownCell,
   rgb: RGB,
-  glow: RGB,
-  showSign: boolean,
+  _glow: RGB,
+  showVent: boolean,
   layout: GridLayout,
 ) {
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
   const y = cell.baseY + cell.height * TOWN_STORY
   const corners = cellCorners(cell.ix, cell.iz, layout)
-  const outer = corners.map((p) => [p[0] + (cx - p[0]) * 0.08, p[1] + (cz - p[1]) * 0.08] as XZ)
-  const inner = outer.map((p) => [p[0] + (cx - p[0]) * 0.22, p[1] + (cz - p[1]) * 0.22] as XZ)
-  const thickness = 0.14
+  // Low parapet flush to the lot edge — boxy warehouse deck, not a beveled crystal crown.
+  const outer = corners.map((p) => [p[0] + (cx - p[0]) * 0.02, p[1] + (cz - p[1]) * 0.02] as XZ)
+  const inner = outer.map((p) => [p[0] + (cx - p[0]) * 0.06, p[1] + (cz - p[1]) * 0.06] as XZ)
+  const thickness = 0.1
   for (let i = 0; i < 4; i++) {
     const j = (i + 1) % 4
     const o0: V = [outer[i][0], y, outer[i][1]]
@@ -428,34 +589,33 @@ function addRoof(
     const i0: V = [inner[i][0], y + thickness, inner[i][1]]
     const i1: V = [inner[j][0], y + thickness, inner[j][1]]
     pushQuad(pos, nrm, col, edge, o0, o1, i1, i0, rgb, [cx, y - 1, cz], true)
-    const strip: RGB = [glow[0] * 0.55, glow[1] * 0.55, glow[2] * 0.55]
-    const e0: V = [o0[0], y + 0.02, o0[2]]
-    const e1: V = [o1[0], y + 0.02, o1[2]]
-    pushQuad(
-      gpos,
-      gnrm,
-      gcol,
-      [],
-      e0,
-      e1,
-      [e1[0], e1[1] + 0.035, e1[2]],
-      [e0[0], e0[1] + 0.035, e0[2]],
-      strip,
-      [cx, y - 1, cz],
-    )
   }
   const top = inner.map((p) => [p[0], y + thickness, p[1]] as V)
   pushQuad(pos, nrm, col, edge, top[0], top[1], top[2], top[3], rgb, [cx, y - 1, cz])
 
-  if (showSign) {
-    const s = 0.06
+  // Squat rooftop tank — utilitarian, not a tall thin tower.
+  if (showVent) {
+    const s = 0.16
+    const tankH = 0.14
+    const metal: RGB = [
+      Math.min(1, rgb[0] * 0.75 + 0.08),
+      Math.min(1, rgb[1] * 0.75 + 0.08),
+      Math.min(1, rgb[2] * 0.75 + 0.08),
+    ]
     const mast: V[] = [
       [cx - s, y + thickness, cz - s],
       [cx + s, y + thickness, cz - s],
-      [cx + s, y + thickness + 0.46, cz + s],
-      [cx - s, y + thickness + 0.46, cz - s],
+      [cx + s, y + thickness + tankH, cz + s],
+      [cx - s, y + thickness + tankH, cz - s],
     ]
-    pushQuad(gpos, gnrm, gcol, [], mast[0], mast[1], mast[2], mast[3], glow, [cx, y, cz])
+    pushQuad(pos, nrm, col, edge, mast[0], mast[1], mast[2], mast[3], metal, [cx, y, cz], true)
+    const cap: V[] = [
+      [cx - s * 1.05, y + thickness + tankH, cz - s * 1.05],
+      [cx + s * 1.05, y + thickness + tankH, cz - s * 1.05],
+      [cx + s * 1.05, y + thickness + tankH + 0.03, cz + s * 1.05],
+      [cx - s * 1.05, y + thickness + tankH + 0.03, cz + s * 1.05],
+    ]
+    pushQuad(pos, nrm, col, edge, cap[0], cap[1], cap[2], cap[3], metal, [cx, y, cz], true)
   }
 }
 
@@ -471,7 +631,7 @@ function addFlatCourt(
 ) {
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
   const corners = cellCorners(cell.ix, cell.iz, layout)
-  const ring = corners.map((p) => [p[0] + (cx - p[0]) * 0.12, p[1] + (cz - p[1]) * 0.12] as XZ)
+  const ring = corners.map((p) => [p[0] + (cx - p[0]) * 0.04, p[1] + (cz - p[1]) * 0.04] as XZ)
   const hole = ring.map((p) => [p[0] + (cx - p[0]) * 0.42, p[1] + (cz - p[1]) * 0.42] as XZ)
   const top = y + 0.08
   for (let i = 0; i < 4; i++) {
@@ -501,26 +661,27 @@ function addShedRoof(
   nrm: number[],
   col: number[],
   edge: number[],
-  gpos: number[],
-  gnrm: number[],
-  gcol: number[],
+  _gpos: number[],
+  _gnrm: number[],
+  _gcol: number[],
   cell: TownCell,
   sides: Side[],
   y: number,
   rgb: RGB,
-  glow: RGB,
+  _glow: RGB,
   layout: GridLayout,
 ) {
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
   const corners = cellCorners(cell.ix, cell.iz, layout)
-  const yLow = y + 0.06
-  const yHigh = y + 0.62
+  // Shallow industrial slope (factory/warehouse), not a steep residential gable.
+  const yLow = y + 0.04
+  const yHigh = y + 0.16
   const heights = corners.map((_, k) => {
     const prevClosed = sides[(k + 3) % 4].open ? 0 : 1
     const nextClosed = sides[k].open ? 0 : 1
     return yLow + (yHigh - yLow) * ((prevClosed + nextClosed) / 2)
   })
-  const inset = corners.map((p) => [p[0] + (cx - p[0]) * 0.1, p[1] + (cz - p[1]) * 0.1] as XZ)
+  const inset = corners.map((p) => [p[0] + (cx - p[0]) * 0.03, p[1] + (cz - p[1]) * 0.03] as XZ)
   const top = inset.map((p, i) => [p[0], heights[i], p[1]] as V)
   pushQuad(pos, nrm, col, edge, top[0], top[1], top[2], top[3], rgb, [cx, y - 1, cz], true)
   for (let i = 0; i < 4; i++) {
@@ -545,13 +706,18 @@ function addShedRoof(
   const c = inset[hi]
   const s = 0.07
   const base = heights[hi]
+  const metal: RGB = [
+    Math.min(1, rgb[0] * 0.75 + 0.08),
+    Math.min(1, rgb[1] * 0.75 + 0.08),
+    Math.min(1, rgb[2] * 0.75 + 0.08),
+  ]
   const box: V[] = [
     [c[0] - s, base, c[1] - s],
     [c[0] + s, base, c[1] - s],
-    [c[0] + s, base + 0.38, c[1] + s],
-    [c[0] - s, base + 0.38, c[1] - s],
+    [c[0] + s, base + 0.32, c[1] + s],
+    [c[0] - s, base + 0.32, c[1] + s],
   ]
-  pushQuad(gpos, gnrm, gcol, [], box[0], box[1], box[2], box[3], glow, [cx, y, cz])
+  pushQuad(pos, nrm, col, edge, box[0], box[1], box[2], box[3], metal, [cx, y, cz], true)
 }
 
 type LotNeighbors = {
@@ -561,37 +727,45 @@ type LotNeighbors = {
   west: TownCell | null
 }
 
-function addTarp(cell: TownCell, layout: GridLayout) {
+function addTarp(cell: TownCell, layout: GridLayout, neighbors: CardinalNeighbors) {
   const pos: number[] = []
   const nrm: number[] = []
   const col: number[] = []
   const edge: number[] = []
   const drape: number[] = []
-  const rgb: RGB = [0.45, 0.42, 0.36]
+  // Worn canvas — lit via material; vertex rgb unused (tarp mat is not vertexColored).
+  const rgb: RGB = [0.72, 0.66, 0.52]
   const corners = cellCorners(cell.ix, cell.iz, layout)
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
-  const sheets = 1 + (hash2(cell.ix, cell.iz, 12) > 0.45 ? 1 : 0)
+  const open = openSidesAtLot(neighbors)
+  const plan = tarpPlan(cell.height, open, layout.cellSize, layout.buildingScale ?? 3)
   const y = cell.baseY + cell.height * TOWN_STORY + 0.12
+  const span = Math.min(0.4, Math.max(0.18, plan.edgeSpan))
 
-  const sheet = (i: number, salt: number) => {
-    const a = corners[i]
-    const b = corners[(i + 1) % 4]
-    const mx = (a[0] + b[0]) / 2
-    const mz = (a[1] + b[1]) / 2
+  const sheet = (i: number) => {
+    const a = corners[i]!
+    const b = corners[(i + 1) % 4]!
+    // Centered patch — not the full roof edge.
+    const t0 = 0.5 - span * 0.5
+    const t1 = 0.5 + span * 0.5
+    const pA: XZ = [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0]
+    const pB: XZ = [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1]
+    const mx = (pA[0] + pB[0]) / 2
+    const mz = (pA[1] + pB[1]) / 2
     let ox = mx - cx
     let oz = mz - cz
     const len = Math.hypot(ox, oz) || 1
     ox /= len
     oz /= len
-    const hang = (0.42 + hash2(cell.ix, cell.iz, salt) * 0.35) * Math.max(1, cell.height)
-    const flare = 0.16 + hash2(cell.ix, cell.iz, salt + 1) * 0.14
-    const droop = 0.12 + hash2(cell.ix, cell.iz, salt + 2) * 0.16
-    const a0: V = [a[0], y, a[1]]
-    const b0: V = [b[0], y, b[1]]
-    const mid: V = [(a0[0] + b0[0]) / 2, y, (a0[2] + b0[2]) / 2]
-    const a1: V = [a[0] + ox * flare, y - hang, a[1] + oz * flare]
-    const b1: V = [b[0] + ox * flare * 0.85, y - hang * 0.9, b[1] + oz * flare * 0.85]
-    const low: V = [mx + ox * (flare + 0.06), y - hang - droop, mz + oz * (flare + 0.06)]
+    const hang = plan.hang
+    const flare = plan.flare
+    const droop = plan.droop
+    const a0: V = [pA[0], y, pA[1]]
+    const b0: V = [pB[0], y, pB[1]]
+    const mid: V = [mx, y, mz]
+    const a1: V = [pA[0] + ox * flare, y - hang, pA[1] + oz * flare]
+    const b1: V = [pB[0] + ox * flare * 0.9, y - hang * 0.92, pB[1] + oz * flare * 0.9]
+    const low: V = [mx + ox * (flare + 0.04), y - hang - droop, mz + oz * (flare + 0.04)]
     for (const [p, q, r, s] of [
       [a0, mid, low, a1],
       [mid, b0, b1, low],
@@ -600,22 +774,19 @@ function addTarp(cell: TownCell, layout: GridLayout) {
       pushQuad(pos, nrm, col, edge, p, q, r, s, rgb, [cx, y - 1, cz])
       const written = (pos.length - before) / 3
       for (let v = 0; v < written; v++) {
-        const px = pos[before + v * 3]
-        const py = pos[before + v * 3 + 1]
-        const pz = pos[before + v * 3 + 2]
+        const px = pos[before + v * 3]!
+        const py = pos[before + v * 3 + 1]!
+        const pz = pos[before + v * 3 + 2]!
         const roof = py > y - 0.04
-        const ax = roof ? px : (a0[0] + b0[0]) / 2
+        const ax = roof ? px : mx
         const ay = roof ? py : y
-        const az = roof ? pz : (a0[2] + b0[2]) / 2
+        const az = roof ? pz : mz
         drape.push(ax - px, ay - py, az - pz)
       }
     }
   }
 
-  for (let n = 0; n < sheets; n++) {
-    const i = Math.floor(hash2(cell.ix, cell.iz, 8 + n) * 4) % 4
-    sheet(i, 20 + n * 3)
-  }
+  for (const i of plan.sides) sheet(i)
   return toGeo(pos, nrm, col, edge, drape)
 }
 
@@ -698,6 +869,99 @@ function buildFoundation(
   return toGeo(pos, nrm, col, edge)
 }
 
+/**
+ * Fail-bay hardware only — sagging lintel bar + one diagonal brace.
+ * Marked metal (aEdge) so rust streaks read from them; does not change lot typology.
+ */
+function addFailBayHardware(
+  pos: number[],
+  nrm: number[],
+  col: number[],
+  edge: number[],
+  cell: TownCell,
+  layout: GridLayout,
+  failSide: number,
+) {
+  const metal: RGB = [0.28, 0.24, 0.2]
+  const corners = cellCorners(cell.ix, cell.iz, layout)
+  const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
+  const a = corners[failSide]!
+  const b = corners[(failSide + 1) % 4]!
+  const mx = (a[0] + b[0]) / 2
+  const mz = (a[1] + b[1]) / 2
+  let ox = mx - cx
+  let oz = mz - cz
+  const len = Math.hypot(ox, oz) || 1
+  ox /= len
+  oz /= len
+  const storyBand = Math.min(2, Math.max(1, cell.height))
+  const yLint = cell.baseY + storyBand * TOWN_STORY * 0.58
+  const yFoot = cell.baseY + 0.08
+  const inset = 0.06
+  const t = 0.035
+  const alongX = b[0] - a[0]
+  const alongZ = b[1] - a[1]
+  const alen = Math.hypot(alongX, alongZ) || 1
+  const tx = alongX / alen
+  const tz = alongZ / alen
+
+  const lintel: [V, V, V, V] = [
+    [a[0] + ox * inset + tx * 0.12, yLint - t, a[1] + oz * inset + tz * 0.12],
+    [b[0] + ox * inset - tx * 0.12, yLint - t * 0.2, b[1] + oz * inset - tz * 0.12],
+    [b[0] + ox * inset - tx * 0.12, yLint + t * 0.6, b[1] + oz * inset - tz * 0.12],
+    [a[0] + ox * inset + tx * 0.12, yLint + t, a[1] + oz * inset + tz * 0.12],
+  ]
+  pushQuad(pos, nrm, col, edge, lintel[0], lintel[1], lintel[2], lintel[3], metal, [cx, yLint, cz], true)
+
+  // Diagonal brace: high near b → foot near a (one failed strut, not a wall lean).
+  const brace: [V, V, V, V] = [
+    [b[0] + ox * inset - tx * 0.2, yLint - 0.02, b[1] + oz * inset - tz * 0.2],
+    [b[0] + ox * (inset + 0.04) - tx * 0.15, yLint + 0.02, b[1] + oz * (inset + 0.04) - tz * 0.15],
+    [a[0] + ox * (inset + 0.04) + tx * 0.25, yFoot + 0.04, a[1] + oz * (inset + 0.04) + tz * 0.25],
+    [a[0] + ox * inset + tx * 0.2, yFoot, a[1] + oz * inset + tz * 0.2],
+  ]
+  pushQuad(pos, nrm, col, edge, brace[0], brace[1], brace[2], brace[3], metal, [cx, yLint, cz], true)
+}
+
+/** Sparse scrap piles at the fail-bay footing — process leftovers, not landscaping. */
+function addBaseDebris(cell: TownCell, layout: GridLayout, failSide: number) {
+  const pos: number[] = []
+  const nrm: number[] = []
+  const col: number[] = []
+  const edge: number[] = []
+  const scrap: RGB = [0.38, 0.34, 0.3]
+  const corners = cellCorners(cell.ix, cell.iz, layout)
+  const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
+  const a = corners[failSide]!
+  const b = corners[(failSide + 1) % 4]!
+  const y0 = cell.baseY + 0.02
+  const piles = [
+    { t: 0.22, s: 0.11, h: 0.07 },
+    { t: 0.55, s: 0.14, h: 0.09 },
+    { t: 0.78, s: 0.09, h: 0.05 },
+  ]
+  for (const pile of piles) {
+    const px = a[0] + (b[0] - a[0]) * pile.t
+    const pz = a[1] + (b[1] - a[1]) * pile.t
+    let ox = px - cx
+    let oz = pz - cz
+    const len = Math.hypot(ox, oz) || 1
+    ox = (ox / len) * 0.1
+    oz = (oz / len) * 0.1
+    const x = px + ox
+    const z = pz + oz
+    const hs = pile.s * 0.5
+    const box: [V, V, V, V] = [
+      [x - hs, y0, z - hs],
+      [x + hs, y0, z - hs],
+      [x + hs, y0 + pile.h, z + hs],
+      [x - hs, y0 + pile.h, z + hs],
+    ]
+    pushQuad(pos, nrm, col, edge, box[0], box[1], box[2], box[3], scrap, [cx, y0, cz])
+  }
+  return toGeo(pos, nrm, col, edge)
+}
+
 export function buildLotGeometry(cell: TownCell, neighbors: LotNeighbors, layout: GridLayout) {
   const pos: number[] = []
   const nrm: number[] = []
@@ -706,9 +970,15 @@ export function buildLotGeometry(cell: TownCell, neighbors: LotNeighbors, layout
   const gpos: number[] = []
   const gnrm: number[] = []
   const gcol: number[] = []
-  const rgb = plasterRgb[cell.color] ?? plasterRgb[0]
-  const glow = glowRgb[cell.color] ?? glowRgb[0]
+  const jpos: number[] = []
+  const jnrm: number[] = []
+  const glassDrafts: GlassDraft[] = []
+  const rgb = plasterRgb[cell.color] ?? plasterRgb[0]!
+  const glow = PRACTICAL_GLOW
   const around = [neighbors.south, neighbors.east, neighbors.north, neighbors.west]
+  const cardinal: CardinalNeighbors = neighbors
+  const open = openSidesAtLot(cardinal)
+  const fail = failFromExposure(open, cell.height, 8)
   const voxels = cellStoryVoxels(cell)
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
   const corners = cellCorners(cell.ix, cell.iz, layout)
@@ -721,30 +991,39 @@ export function buildLotGeometry(cell: TownCell, neighbors: LotNeighbors, layout
     topSides = sides
 
     for (let k = 0; k < 4; k++) {
-      const prev = sides[(k + 3) % 4]
-      const next = sides[k]
+      const prev = sides[(k + 3) % 4]!
+      const next = sides[k]!
       if (prev.open && next.open) {
-        const c = corners[k]
+        const c = corners[k]!
         const insetX = c[0] + (cx - c[0]) * 0.2
         const insetZ = c[1] + (cz - c[1]) * 0.2
         addColumn(pos, nrm, col, edge, insetX, insetZ, y0, y1, rgb)
       }
     }
 
-    sides.forEach((side) => {
+    sides.forEach((side, sideIndex) => {
       if (!side.open) return
       const neighbor = side.neighbor
       if (neighbor && voxel.iy === neighbor.height) {
         const stepLow = neighbor.baseY + neighbor.height * TOWN_STORY
         addStairs(pos, nrm, col, edge, side, stepLow, y1, rgb)
-        addArchWall(pos, nrm, col, edge, gpos, gnrm, gcol, side, stepLow, y1, rgb, glow, false)
+        addArchWall(
+          pos, nrm, col, edge, gpos, gnrm, gcol, jpos, jnrm, glassDrafts,
+          side, sideIndex, voxel.iy, fail.failSide, stepLow, y1, rgb, glow, false,
+        )
         return
       }
       if (voxel.iy === 0) {
-        addArchWall(pos, nrm, col, edge, gpos, gnrm, gcol, side, y0, y1, rgb, glow, true)
+        addArchWall(
+          pos, nrm, col, edge, gpos, gnrm, gcol, jpos, jnrm, glassDrafts,
+          side, sideIndex, voxel.iy, fail.failSide, y0, y1, rgb, glow, true,
+        )
         return
       }
-      addWindowWall(pos, nrm, col, edge, gpos, gnrm, gcol, side, y0, y1, rgb, glow)
+      addWindowWall(
+        pos, nrm, col, edge, gpos, gnrm, gcol, jpos, jnrm, glassDrafts,
+        side, sideIndex, voxel.iy, fail.failSide, y0, y1, rgb, glow,
+      )
     })
   }
 
@@ -758,10 +1037,38 @@ export function buildLotGeometry(cell: TownCell, neighbors: LotNeighbors, layout
     addShedRoof(pos, nrm, col, edge, gpos, gnrm, gcol, cell, topSides, yTop, rgb, glow, layout)
   }
 
+  addFailBayHardware(pos, nrm, col, edge, cell, layout, fail.failSide)
+
+  // Fixed break order: fail bay first, then adjacent, then opposite; lower story before higher.
+  glassDrafts.sort(
+    (a, b) => a.sideDist - b.sideDist || a.story - b.story || a.side - b.side,
+  )
+  const vertCount = jpos.length / 3
+  const orderAttr = new Array(vertCount).fill(0)
+  const sideDistAttr = new Array(vertCount).fill(0)
+  const panes: GlassPane[] = []
+  glassDrafts.forEach((draft, order) => {
+    for (let i = 0; i < draft.vertCount; i++) {
+      orderAttr[draft.vertStart + i] = order
+      sideDistAttr[draft.vertStart + i] = draft.sideDist
+    }
+    panes.push({
+      side: draft.side,
+      story: draft.story,
+      sideDist: draft.sideDist,
+      order,
+      crackAt: glassCrackWear(order, draft.sideDist),
+      breakAt: glassBreakWear(order, draft.sideDist),
+    })
+  })
+
   return {
     plaster: toGeo(pos, nrm, col, edge),
     glow: toGeo(gpos, gnrm, gcol, []),
-    tarp: addTarp(cell, layout),
+    glass: toGlassGeo(jpos, jnrm, orderAttr, sideDistAttr),
+    panes,
+    tarp: addTarp(cell, layout, cardinal),
+    debris: addBaseDebris(cell, layout, fail.failSide),
   }
 }
 
@@ -827,6 +1134,7 @@ const LotMesh = memo(function LotMesh({
   buildingScale,
   heightAt,
   decayRef,
+  onGlassEvent,
 }: {
   cell: TownCell
   south: TownCell | null
@@ -838,6 +1146,7 @@ const LotMesh = memo(function LotMesh({
   buildingScale: number
   heightAt: (x: number, z: number) => number
   decayRef: { current: DecayParams }
+  onGlassEvent?: (line: string) => void
 }) {
   const layout = useMemo(
     () => ({ cellSize, warp, buildingScale }),
@@ -876,43 +1185,90 @@ const LotMesh = memo(function LotMesh({
     return () => {
       built.plaster.dispose()
       built.glow.dispose()
+      built.glass.dispose()
       built.tarp.dispose()
+      built.debris.dispose()
       foundation.dispose()
     }
   }, [built, foundation])
 
   const wear = useMemo(() => {
-    const paint = new Color(TOWN_SWATCHES[cell.color]?.glow ?? '#c8c4bc')
+    const paint = new Color(TOWN_SWATCHES[cell.color]?.plaster ?? '#7a7872')
+    const [ox, oz] = cellCentroid(cell.ix, cell.iz, layout)
+    const neighbors: CardinalNeighbors = { south, east, north, west }
+    const open = openSidesAtLot(neighbors)
+    const fail = failFromExposure(open, cell.height, 8)
+    // Tilt unused for whole-bay lean (mass stays square); kept for uniform API.
     return createWearUniforms(
       floor,
-      (hash2(cell.ix, cell.iz, 3) - 0.5) * 0.28,
-      (hash2(cell.ix, cell.iz, 4) - 0.5) * 0.22,
+      0,
+      0,
       paint,
+      ox,
+      oz,
+      fail.failSide,
+      fail.roofSeed,
+      fail.windowSeed,
     )
-  }, [cell.ix, cell.iz, cell.color, floor])
+  }, [cell.ix, cell.iz, cell.color, cell.height, floor, layout, south, east, north, west])
   const plasterMat = useMemo(() => createPlasterMaterial(wear), [wear])
   const glowMat = useMemo(() => createGlowMaterial(wear), [wear])
+  const glassMat = useMemo(() => createGlassMaterial(wear), [wear])
   const tarpMat = useMemo(() => createTarpMaterial(wear), [wear])
+  const debrisMat = useMemo(() => createDebrisMaterial(wear), [wear])
   useEffect(() => {
     return () => {
       plasterMat.dispose()
       glowMat.dispose()
+      glassMat.dispose()
       tarpMat.dispose()
+      debrisMat.dispose()
     }
-  }, [plasterMat, glowMat, tarpMat])
+  }, [plasterMat, glowMat, glassMat, tarpMat, debrisMat])
+
+  const glassStateRef = useRef<Map<number, 'intact' | 'cracked' | 'broken'>>(new Map())
+  const onGlassRef = useRef(onGlassEvent)
+  onGlassRef.current = onGlassEvent
+  useEffect(() => {
+    glassStateRef.current = new Map()
+  }, [built])
+
   useFrame(() => {
     const marks = stageMarks(
       decayRef.current.settledAt,
       decayRef.current.abandonedAt,
       decayRef.current.reclaimedAt,
     )
-    wear.uWear.value = cellWear(cell.age, marks)
+    const w = cellWear(cell.age, marks)
+    wear.uWear.value = w
     wear.uWearIntensity.value = decayRef.current.wearIntensity
+
+    const log = onGlassRef.current
+    if (!log || built.panes.length === 0) return
+    for (const pane of built.panes) {
+      const next = glassStateAtWear(w, pane.order, pane.sideDist)
+      const prev = glassStateRef.current.get(pane.order)
+      if (prev === undefined) {
+        // Seed without logging — remount/scrub must not dump every pane as a break event.
+        glassStateRef.current.set(pane.order, next)
+        continue
+      }
+      if (next === prev) continue
+      glassStateRef.current.set(pane.order, next)
+      if (next === 'cracked' || next === 'broken') {
+        const verb = next === 'broken' ? 'breaks' : 'cracks'
+        const line = `[glass] ${cell.ix},${cell.iz} window (story ${pane.story}, ${faceLetter(pane.side)} face) ${verb} — wear crosses threshold`
+        console.info(`[weathering glass] ${line}`)
+        log(line)
+      }
+    }
   })
 
   const plasterCount = built.plaster.getAttribute('position')?.count ?? 0
   const glowCount = built.glow.getAttribute('position')?.count ?? 0
+  const glassCount = built.glass.getAttribute('position')?.count ?? 0
   const tarpCount = built.tarp.getAttribute('position')?.count ?? 0
+  const debrisCount = built.debris.getAttribute('position')?.count ?? 0
   const [cx, cz] = cellCentroid(cell.ix, cell.iz, layout)
   const foundationCount = foundation.getAttribute('position')?.count ?? 0
   return (
@@ -926,8 +1282,13 @@ const LotMesh = memo(function LotMesh({
         {tarpCount > 0 ? (
           <mesh geometry={built.tarp} material={tarpMat} raycast={() => null} />
         ) : null}
+        {glassCount > 0 ? (
+          <mesh geometry={built.glass} material={glassMat} raycast={() => null} />
+        ) : null}
         {glowCount > 0 ? <mesh geometry={built.glow} material={glowMat} raycast={() => null} /> : null}
-        <CellStageFixture cell={{ ...cell, baseY: floor }} cellSize={cellSize} warp={warp} decayRef={decayRef} />
+        {debrisCount > 0 ? (
+          <mesh geometry={built.debris} material={debrisMat} raycast={() => null} />
+        ) : null}
       </group>
       </group>
     </group>
@@ -935,32 +1296,30 @@ const LotMesh = memo(function LotMesh({
 })
 
 /**
- * A new lot is one story voxel. Each later click appends another voxel until Max height.
- * Clicks past the cap recolor the column and leave the stack in place.
+ * Claim an empty lot only (Phase 2). Existing shells are never stacked, cleared,
+ * recolored, or otherwise intervened on — shells persist as leftover infrastructure.
+ * Height defaults to 1 (player claim); callers may override from neighbor rules.
  */
 export function applyTownClick(
   existing: TownCell | undefined,
   swatch: number,
   place: { ix: number; iz: number; baseY: number },
   maxStories = 8,
+  inhabited = false,
 ): TownCell | null {
-  const cap = Math.max(1, Math.floor(maxStories))
-  if (!existing) {
-    return {
-      ix: place.ix,
-      iz: place.iz,
-      baseY: place.baseY,
-      height: 1,
-      color: swatch,
-      age: 0,
-      inhabited: cellHasBarrel(place.ix, place.iz, 0.38),
-    }
+  void maxStories
+  if (existing) return null
+  const profile = cellVacateProfile(place.ix, place.iz)
+  return {
+    ix: place.ix,
+    iz: place.iz,
+    baseY: place.baseY,
+    height: 1,
+    color: swatch,
+    age: 0,
+    inhabited,
+    vacateRate: profile.rate,
   }
-  if (existing.height < cap) {
-    return { ...existing, height: existing.height + 1 }
-  }
-  const nextColor = (existing.color + 1) % TOWN_SWATCHES.length
-  return { ...existing, color: nextColor }
 }
 
 const TOUCH = [
@@ -1006,6 +1365,12 @@ type TownProps = {
   onAgeReadout: (lines: string[], waterNote: boolean) => void
   /** Fired when the set of claimed cells changes. Age ticks do not call this. */
   onSettlement: () => void
+  /** Phase 1 intro vs Phase 2 continuous. */
+  phase: TownPhase
+  /** Intro scrubber time in [0, INTRO_DURATION]. Ignored once ongoing. */
+  timelineT: number
+  /** Live intro clock (advanced every frame while playing). Prefer over timelineT for ages. */
+  timelineClockRef: MutableRefObject<number>
 }
 
 export function EpSalvageTown({
@@ -1026,12 +1391,26 @@ export function EpSalvageTown({
   onTownDecay,
   onAgeReadout,
   onSettlement,
+  phase,
+  timelineT,
+  timelineClockRef,
 }: TownProps) {
   const [color, setColor] = useState(0)
   const [lots, setLots] = useState<TownCell[]>([])
   const [ageLines, setAgeLines] = useState<string[]>([])
+  /** Recent inhabited flicker on/off events — process log, not per-frame noise. */
+  const [flickerLog, setFlickerLog] = useState<string[]>([])
+  /** Wear-ordered glass crack/break events — same process log as flicker. */
+  const [glassLog, setGlassLog] = useState<string[]>([])
+  /** Rule-based claim / seed / massing reasons — same process log as flicker. */
+  const [ruleLog, setRuleLog] = useState<string[]>([])
   const colorRef = useRef(color)
   colorRef.current = color
+  const pushRuleLog = (line: string) => {
+    setRuleLog((prev) => [line, ...prev].slice(0, 20))
+  }
+  const pushRuleLogRef = useRef(pushRuleLog)
+  pushRuleLogRef.current = pushRuleLog
   const groundAtRef = useRef(groundAt)
   groundAtRef.current = groundAt
   const decayRef = useRef(decay)
@@ -1048,6 +1427,9 @@ export function EpSalvageTown({
   onAgeReadoutRef.current = onAgeReadout
   const onSettlementRef = useRef(onSettlement)
   onSettlementRef.current = onSettlement
+  const phaseRef = useRef(phase)
+  phaseRef.current = phase
+  // timelineClockRef is owned by WeatheringV3Scene (scrub sync + play driver).
 
   const publish = (ix: number, iz: number) => {
     const map = cellsRef.current
@@ -1062,70 +1444,172 @@ export function EpSalvageTown({
     onSettlementRef.current()
   }
 
+  const neighborsAround = (map: Map<string, TownCell>, ix: number, iz: number): CardinalNeighbors => ({
+    south: map.get(gridKey(ix + GRID_ORTHO.south.dix, iz + GRID_ORTHO.south.diz)) ?? null,
+    east: map.get(gridKey(ix + GRID_ORTHO.east.dix, iz + GRID_ORTHO.east.diz)) ?? null,
+    north: map.get(gridKey(ix + GRID_ORTHO.north.dix, iz + GRID_ORTHO.north.diz)) ?? null,
+    west: map.get(gridKey(ix + GRID_ORTHO.west.dix, iz + GRID_ORTHO.west.diz)) ?? null,
+  })
+
   const editAt = (ix: number, iz: number, y: number) => {
     void y
+    // Phase 1 is watch-only. Phase 2: claim empty lots only — never touch existing shells.
+    if (phaseRef.current !== 'ongoing') return
     const key = gridKey(ix, iz)
     const map = cellsRef.current
+    if (map.has(key)) return
+    const inhabited = shouldClaimInhabited(map, ix, iz, decayRef.current.fireBarrelChance)
+    const swatch = colorRef.current
     const next = applyTownClick(
-      map.get(key),
-      colorRef.current,
+      undefined,
+      swatch,
       { ix, iz, baseY: lotFloor(ix, iz, layoutRef.current, heightAtRef.current) },
       maxStoriesRef.current,
+      inhabited,
     )
-    if (next) map.set(key, next)
-    else map.delete(key)
+    if (!next) return
+    map.set(key, next)
+    const nb = neighborsAround(map, ix, iz)
+    pushRuleLogRef.current(
+      describeClaimDecision({
+        ix,
+        iz,
+        height: next.height,
+        colorLabel: TOWN_SWATCHES[swatch]?.label ?? `swatch ${swatch}`,
+        heightReason: 'player claim starts at 1 story',
+        colorReason: 'swatch picker',
+        inhabited,
+        inhabitedReason: inhabited
+          ? 'inhabited share still below panel; denser edge preferred'
+          : 'inhabited share already at panel chance',
+        neighbors: nb,
+      }),
+    )
     publish(ix, iz)
   }
   editBridge.current = editAt
 
   const growOnce = () => {
+    if (phaseRef.current !== 'ongoing') return
     const map = cellsRef.current
-    const spot = pickGrowthCell(map)
+    const spot = pickGrowthCellByDensity(map)
     if (!spot) return
     const key = gridKey(spot.ix, spot.iz)
     if (map.has(key)) return
     const nearby = neighborColors(map, spot.ix, spot.iz)
-    const swatch =
-      nearby.length > 0 && Math.random() < 0.72
-        ? nearby[Math.floor(Math.random() * nearby.length)]
-        : Math.floor(Math.random() * TOWN_SWATCHES.length)
-    const cap = Math.max(1, Math.floor(maxStoriesRef.current))
-    const height = 1 + Math.floor(Math.random() * cap)
-    map.set(key, {
-      ix: spot.ix,
-      iz: spot.iz,
-      height,
-      color: swatch,
-      baseY: lotFloor(spot.ix, spot.iz, layoutRef.current, heightAtRef.current),
-      age: 0,
-      inhabited: cellHasBarrel(spot.ix, spot.iz, decayRef.current.fireBarrelChance),
-    })
+    const swatch = colorFromNeighborMajority(nearby, 0)
+    const nbBefore = neighborsAround(map, spot.ix, spot.iz)
+    const height = heightFromNeighbors(
+      [nbBefore.south, nbBefore.east, nbBefore.north, nbBefore.west],
+      maxStoriesRef.current,
+    )
+    const inhabited = shouldClaimInhabited(map, spot.ix, spot.iz, decayRef.current.fireBarrelChance)
+    const next = applyTownClick(
+      undefined,
+      swatch,
+      {
+        ix: spot.ix,
+        iz: spot.iz,
+        baseY: lotFloor(spot.ix, spot.iz, layoutRef.current, heightAtRef.current),
+      },
+      maxStoriesRef.current,
+      inhabited,
+    )
+    if (!next) return
+    next.height = height
+    map.set(key, next)
+    const nb = neighborsAround(map, spot.ix, spot.iz)
+    pushRuleLogRef.current(
+      describeClaimDecision({
+        ix: spot.ix,
+        iz: spot.iz,
+        height,
+        colorLabel: TOWN_SWATCHES[swatch]?.label ?? `swatch ${swatch}`,
+        heightReason:
+          nearby.length > 0 ? 'mean of abutting neighbor heights' : 'no neighbors → 1 story',
+        colorReason:
+          nearby.length > 0 ? 'majority neighbor swatch' : 'fallback concrete (no neighbors)',
+        inhabited,
+        inhabitedReason: inhabited
+          ? 'inhabited share still below panel; denser edge preferred'
+          : 'inhabited share already at panel chance',
+        neighbors: nb,
+      }),
+    )
     publish(spot.ix, spot.iz)
   }
   const growRef = useRef(growOnce)
   growRef.current = growOnce
 
   useEffect(() => {
-    if (!autoGrow) return
+    if (!autoGrow || phase !== 'ongoing') return
     const delay = Math.max(0.25, autoGrowSeconds) * 1000
     const id = window.setInterval(() => growRef.current(), delay)
     return () => window.clearInterval(id)
-  }, [autoGrow, autoGrowSeconds])
+  }, [autoGrow, autoGrowSeconds, phase])
 
   useEffect(() => {
     const byKey = new Map<string, TownCell>()
     for (const cell of cellsRef.current.values()) byKey.set(gridKey(cell.ix, cell.iz), cell)
     setLots([...byKey.values()])
+    setFlickerLog([])
+    setGlassLog([])
+    const map = cellsRef.current
+    const sample = [...map.values()]
+      .sort((a, b) => a.iz - b.iz || a.ix - b.ix)
+      .slice(0, 8)
+      .map((cell) => {
+        const nb = {
+          south: map.get(gridKey(cell.ix + GRID_ORTHO.south.dix, cell.iz + GRID_ORTHO.south.diz)) ?? null,
+          east: map.get(gridKey(cell.ix + GRID_ORTHO.east.dix, cell.iz + GRID_ORTHO.east.diz)) ?? null,
+          north: map.get(gridKey(cell.ix + GRID_ORTHO.north.dix, cell.iz + GRID_ORTHO.north.diz)) ?? null,
+          west: map.get(gridKey(cell.ix + GRID_ORTHO.west.dix, cell.iz + GRID_ORTHO.west.diz)) ?? null,
+        }
+        return `${cell.ix},${cell.iz} · ${describeLotMassing(cell, nb)}`
+      })
+    const vacancies = listSeedVacancies()
+    setRuleLog([
+      seedLayoutRuleSummary(),
+      `seed/reseed · height by center distance · color by distance ring · inhabited = central share`,
+      ...vacancies.slice(0, 12),
+      ...(vacancies.length > 12 ? [`… ${vacancies.length - 12} more street vacancies`] : []),
+      ...sample,
+    ])
     onSettlementRef.current()
   }, [claimRevision, cellsRef])
 
   useEffect(() => {
-    for (const cell of cellsRef.current.values()) cell.age = 0
+    // Reset Decay: return every shell to held/new ages; structures remain.
+    for (const cell of cellsRef.current.values()) {
+      cell.age = 0
+      if (cell.vacateRate == null) cell.vacateRate = cellVacateProfile(cell.ix, cell.iz).rate
+    }
   }, [decayReset, cellsRef])
 
   useEffect(() => {
-    onAgeReadoutRef.current(ageLines, false)
-  }, [ageLines])
+    const blocks: string[] = []
+    if (ruleLog.length > 0) blocks.push('settlement rules', ...ruleLog)
+    if (flickerLog.length > 0) {
+      if (blocks.length > 0) blocks.push('—')
+      blocks.push('flicker events', ...flickerLog)
+    }
+    if (glassLog.length > 0) {
+      if (blocks.length > 0) blocks.push('—')
+      blocks.push('glass events', ...glassLog)
+    }
+    if (ageLines.length > 0) {
+      if (blocks.length > 0) blocks.push('—')
+      blocks.push(...ageLines)
+    }
+    onAgeReadoutRef.current(blocks, false)
+  }, [ageLines, flickerLog, glassLog, ruleLog])
+
+  const onFlickerEvent = (line: string) => {
+    setFlickerLog((prev) => [`${line}`, ...prev].slice(0, 14))
+  }
+  const onGlassEvent = (line: string) => {
+    setGlassLog((prev) => [`${line}`, ...prev].slice(0, 14))
+  }
 
   useEffect(() => {
     const map = cellsRef.current
@@ -1139,6 +1623,34 @@ export function EpSalvageTown({
     }
     if (changed) setLots(Array.from(map.values()))
   }, [heightAt, layout, cellsRef, claimRevision])
+
+  // Seed / reseed / scrub: assign intro ages in place. Do not setLots on every
+  // timeline tick — wear reads cell.age live; remounting all lots froze the tab.
+  // Also snap once on Phase 1→2 handoff (Skip/Play end) so ages aren't left at 0.
+  const introHandedOff = useRef(false)
+  useEffect(() => {
+    const map = cellsRef.current
+    const applyFromClock = () => {
+      // Prefer prop on scrub/skip commits; live ref while Play advances between commits.
+      const t = Math.max(timelineT, timelineClockRef.current)
+      for (const cell of map.values()) {
+        const profile = cellVacateProfile(cell.ix, cell.iz)
+        const rate = Number.isFinite(profile.rate) ? profile.rate : 1
+        cell.vacateRate = rate
+        const age = ageAtIntroTime(t, { ...profile, rate })
+        cell.age = Number.isFinite(age) ? age : 0
+      }
+    }
+    if (phase === 'intro') {
+      introHandedOff.current = false
+      applyFromClock()
+      return
+    }
+    if (!introHandedOff.current) {
+      introHandedOff.current = true
+      applyFromClock()
+    }
+  }, [phase, timelineT, cellsRef, claimRevision, timelineClockRef])
 
   useEffect(() => {
     let last = performance.now()
@@ -1155,8 +1667,25 @@ export function EpSalvageTown({
         decayRef.current.abandonedAt,
         decayRef.current.reclaimedAt,
       )
-      const chance = decayRef.current.fireBarrelChance
-      for (const cell of map.values()) cell.age += dt * speed
+      if (phaseRef.current === 'ongoing') {
+        for (const cell of map.values()) {
+          const rate = cell.vacateRate ?? cellVacateProfile(cell.ix, cell.iz).rate
+          const safeRate = Number.isFinite(rate) && rate > 0 ? rate : 1
+          cell.vacateRate = safeRate
+          cell.age += dt * speed * safeRate
+          if (!Number.isFinite(cell.age)) cell.age = 0
+        }
+      } else {
+        // Keep intro ages locked to the live clock even between React commits.
+        const t = timelineClockRef.current
+        for (const cell of map.values()) {
+          const profile = cellVacateProfile(cell.ix, cell.iz)
+          const rate = Number.isFinite(profile.rate) ? profile.rate : 1
+          cell.vacateRate = rate
+          const age = ageAtIntroTime(t, { ...profile, rate })
+          cell.age = Number.isFinite(age) ? age : 0
+        }
+      }
       const share = townDecayShare(map.values(), marks)
       townDecayRef.current = share
       readoutWait += dt
@@ -1165,7 +1694,10 @@ export function EpSalvageTown({
         readoutWait = 0
         const lines = [...map.values()]
           .sort((a, b) => a.iz - b.iz || a.ix - b.ix)
-          .map((cell) => `${cell.ix},${cell.iz}  ${cell.age.toFixed(1)}s  ${cellStage(cell.age, marks)}${cellHasBarrel(cell.ix, cell.iz, chance) ? '  inhabited' : ''}`)
+          .map(
+            (cell) =>
+              `${cell.ix},${cell.iz}  ${cell.age.toFixed(1)}s  ${cellStage(cell.age, marks)}${cell.inhabited ? '  inhabited' : ''}`,
+          )
         setAgeLines(lines)
         onTownDecayRef.current(share)
       }
@@ -1174,7 +1706,10 @@ export function EpSalvageTown({
         const sample = [...map.values()]
           .sort((a, b) => b.age - a.age)
           .slice(0, 4)
-          .map((cell) => `${cell.ix},${cell.iz} ${cell.age.toFixed(1)}s ${cellStage(cell.age, marks)}${cellHasBarrel(cell.ix, cell.iz, chance) ? ' inhabited' : ''}`)
+          .map(
+            (cell) =>
+              `${cell.ix},${cell.iz} ${cell.age.toFixed(1)}s ${cellStage(cell.age, marks)}${cell.inhabited ? ' inhabited' : ''}`,
+          )
         console.info(`[weathering age] ${map.size} cells`, sample.join(' · ') || 'none')
       }
       frame = requestAnimationFrame(tick)
@@ -1182,6 +1717,8 @@ export function EpSalvageTown({
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [cellsRef])
+
+  const canEdit = editEnabled && phase === 'ongoing'
 
   return (
     <>
@@ -1194,15 +1731,21 @@ export function EpSalvageTown({
           buildingScale={layout.buildingScale ?? 3}
           heightAt={heightAt}
           decayRef={decayRef}
+          onGlassEvent={onGlassEvent}
           south={neighborCell(cellsRef.current, cell.ix, cell.iz, GRID_ORTHO.south)}
           east={neighborCell(cellsRef.current, cell.ix, cell.iz, GRID_ORTHO.east)}
           north={neighborCell(cellsRef.current, cell.ix, cell.iz, GRID_ORTHO.north)}
           west={neighborCell(cellsRef.current, cell.ix, cell.iz, GRID_ORTHO.west)}
         />
       ))}
-      <StageLightBudget cellsRef={cellsRef} layout={layout} decayRef={decayRef} />
+      <StageLightBudget
+        cellsRef={cellsRef}
+        layout={layout}
+        decayRef={decayRef}
+        onFlickerEvent={onFlickerEvent}
+      />
       <FeedGrade amount={0.35 + grain * 0.35} />
-      {editEnabled ? (
+      {canEdit ? (
         <Html fullscreen style={{ pointerEvents: 'none' }}>
           <div className="ep-swatches">
             {TOWN_SWATCHES.map((swatch, index) => (
@@ -1210,7 +1753,7 @@ export function EpSalvageTown({
                 key={swatch.id}
                 type="button"
                 className={index === color ? 'is-active' : undefined}
-                style={{ background: swatch.glow }}
+                style={{ background: swatch.plaster }}
                 aria-label={swatch.label}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {

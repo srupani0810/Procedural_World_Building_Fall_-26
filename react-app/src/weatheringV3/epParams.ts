@@ -18,7 +18,7 @@ export type EpParams = {
   cellSize: number
   /** Visual size of each house. Lot spacing stays on cell size. */
   buildingScale: number
-  /** Corner noise strength. 0 keeps the lattice rigid. */
+  /** Lattice shear strength (X↔Z). 0 keeps the lattice rigid. */
   gridWarp: number
   /** Debug lines for the settlement grid. */
   gridVisible: boolean
@@ -60,9 +60,12 @@ export type DecayParams = {
   reclaimedAt: number
   /** Scales rust, staining, and cracks without moving the stage ages. */
   wearIntensity: number
-  /** How often a Settled bulb flickers instead of holding a dim steady glow. */
+  /**
+   * On-fraction of each inhabited cell’s seeded flicker cycle (0–1).
+   * Only inhabited lots flicker; this is duty cycle, not a per-frame random chance.
+   */
   flickerProbability: number
-  /** Share of cells that keep a barrel fire once Abandoned. */
+  /** Share of seeded/claimed lots marked inhabited (presence-lamp flicker). */
   fireBarrelChance: number
 }
 

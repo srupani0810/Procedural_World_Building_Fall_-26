@@ -29,6 +29,7 @@ import type {
   DecayParams as V3DecayParams,
   EpParams as V3EpParams,
 } from './weatheringV3/epParams.ts'
+import type { TownPhase as V3TownPhase } from './weatheringV3/timeline.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -91,6 +92,12 @@ type AppChromeProps = {
   onResetV3Decay: () => void
   v3TownDecay: number
   v3AgeReadout: { lines: string[]; waterNote: boolean }
+  v3Phase: V3TownPhase
+  v3TimelineT: number
+  v3TimelinePlaying: boolean
+  onV3TimelineT: (t: number) => void
+  onV3TimelinePlaying: (playing: boolean) => void
+  onV3EnterOngoing: () => void
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -100,13 +107,19 @@ type AppChromeProps = {
   onReset: () => void
 }
 
-const TELEMETRY_STAGE = /\b(abandoned|reclaimed|settled|inhabited)\b/g
+const TELEMETRY_STAGE = /\b(abandoned|reclaimed|settled|inhabited|flicker|on|off)\b/g
 
-/** Stage words use the panel accent. Cell ids, ages, and “new” stay in the body color. */
+/** Stage / process words use the panel accent. Cell ids and ages stay in the body color. */
 function colorTelemetryStages(text: string) {
   const parts = text.split(TELEMETRY_STAGE)
   return parts.map((part, index) =>
-    part === 'abandoned' || part === 'reclaimed' || part === 'settled' || part === 'inhabited' ? (
+    part === 'abandoned' ||
+    part === 'reclaimed' ||
+    part === 'settled' ||
+    part === 'inhabited' ||
+    part === 'flicker' ||
+    part === 'on' ||
+    part === 'off' ? (
       <span key={index} className="chrome-telemetry-stage">
         {part}
       </span>
@@ -177,6 +190,12 @@ export default function AppChrome({
   onResetV3Decay,
   v3TownDecay,
   v3AgeReadout,
+  v3Phase,
+  v3TimelineT,
+  v3TimelinePlaying,
+  onV3TimelineT,
+  onV3TimelinePlaying,
+  onV3EnterOngoing,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -644,6 +663,12 @@ export default function AppChrome({
             onDecayChange={onV3DecayChange}
             onResetDecay={onResetV3Decay}
             townDecay={v3TownDecay}
+            phase={v3Phase}
+            timelineT={v3TimelineT}
+            timelinePlaying={v3TimelinePlaying}
+            onTimelineT={onV3TimelineT}
+            onTimelinePlaying={onV3TimelinePlaying}
+            onEnterOngoing={onV3EnterOngoing}
           />
         ) : null}
 

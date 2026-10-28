@@ -9,6 +9,8 @@ import ExperientialScene from './ExperientialScene.tsx'
 import WeatheringScene from './weathering/WeatheringScene.tsx'
 import WeatheringV2Scene from './weatheringV2/WeatheringV2Scene.tsx'
 import WeatheringV3Scene from './weatheringV3/WeatheringV3Scene.tsx'
+import type { TownPhase } from './weatheringV3/timeline.ts'
+import { INTRO_DURATION } from './weatheringV3/timeline.ts'
 import { defaultV2Params } from './weatheringV2/params.ts'
 import type { V2Params } from './weatheringV2/params.ts'
 import { createDefaultV2Terrain, createDefaultV2Voxel } from './weatheringV2/worldDefaults.ts'
@@ -98,6 +100,9 @@ function App() {
   const onV3AgeReadout = useCallback((lines: string[], waterNote: boolean) => {
     setV3AgeReadout({ lines, waterNote })
   }, [])
+  const [v3Phase, setV3Phase] = useState<TownPhase>('intro')
+  const [v3TimelineT, setV3TimelineT] = useState(0)
+  const [v3TimelinePlaying, setV3TimelinePlaying] = useState(false)
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -216,6 +221,19 @@ function App() {
             decayReset={v3DecayReset}
             onTownDecay={setV3TownDecay}
             onAgeReadout={onV3AgeReadout}
+            phase={v3Phase}
+            timelineT={v3TimelineT}
+            timelinePlaying={v3TimelinePlaying}
+            onTimelineT={(t) => {
+              const clamped = Math.max(0, Math.min(INTRO_DURATION, t))
+              setV3TimelineT(clamped)
+              if (clamped >= INTRO_DURATION) {
+                setV3TimelinePlaying(false)
+                setV3Phase('ongoing')
+              }
+            }}
+            onPhase={setV3Phase}
+            onTimelinePlaying={setV3TimelinePlaying}
           />
         ) : showSim ? (
           <HeightMapView
@@ -296,12 +314,43 @@ function App() {
         }
         v3Voxel={v3Voxel}
         onV3VoxelChange={(patch) => setV3Voxel((current) => ({ ...current, ...patch }))}
-        onResetV3Grid={() => setV3GridReset((value) => value + 1)}
+        onResetV3Grid={() => {
+          setV3Phase('intro')
+          setV3TimelineT(0)
+          setV3TimelinePlaying(false)
+          setV3GridReset((value) => value + 1)
+        }}
         v3DecayParams={v3DecayParams}
         onV3DecayChange={(patch) => setV3DecayParams((current) => ({ ...current, ...patch }))}
-        onResetV3Decay={() => setV3DecayReset((value) => value + 1)}
+        onResetV3Decay={() => {
+          if (v3Phase === 'intro') {
+            setV3TimelineT(0)
+            setV3TimelinePlaying(false)
+          }
+          setV3DecayReset((value) => value + 1)
+        }}
         v3TownDecay={v3TownDecay}
         v3AgeReadout={v3AgeReadout}
+        v3Phase={v3Phase}
+        v3TimelineT={v3TimelineT}
+        v3TimelinePlaying={v3TimelinePlaying}
+        onV3TimelineT={(t) => {
+          const clamped = Math.max(0, Math.min(INTRO_DURATION, t))
+          setV3TimelineT(clamped)
+          if (clamped >= INTRO_DURATION) {
+            setV3TimelinePlaying(false)
+            setV3Phase('ongoing')
+          } else if (v3Phase === 'ongoing' && clamped < INTRO_DURATION) {
+            // Scrubbing backward from the end returns to intro watch mode.
+            setV3Phase('intro')
+          }
+        }}
+        onV3TimelinePlaying={setV3TimelinePlaying}
+        onV3EnterOngoing={() => {
+          setV3TimelineT(INTRO_DURATION)
+          setV3TimelinePlaying(false)
+          setV3Phase('ongoing')
+        }}
         firstPerson={
           mode === 'ep'
             ? epFirstPerson

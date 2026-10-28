@@ -1,4 +1,4 @@
-import { OrbitControls } from '@react-three/drei'
+import { Html, OrbitControls } from '@react-three/drei'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
@@ -27,10 +27,17 @@ import {
 } from './epParams.ts'
 import { createEpMaterial } from './epMaterial.ts'
 import { createStillGroundMaterial, DeadSky } from './epAtmosphere.tsx'
-import { cellCentroid, clearGrid, type GridCell, type GridLayout } from './epGrid.ts'
+import { cellCentroid, type GridCell, type GridLayout } from './epGrid.ts'
 import { EpGrid } from './epGrid.tsx'
 import { EpSalvageTown } from './epTown.tsx'
 import { BackgroundBuildings, type BackgroundSettings } from './backgroundBuildings.tsx'
+import {
+  INTRO_DURATION,
+  INTRO_PLAY_SPEED,
+  formatPhaseLabel,
+  seedIntactCity,
+  type TownPhase,
+} from './timeline.ts'
 import type { GradientStop } from '../heightGradient.ts'
 import { createNoise, terrainAmplitude, type TerrainParams } from '../terrainParams.ts'
 import { buildGreedyInteractiveMesh, hitToVoxelIndex } from '../voxelGreedyMesh.ts'
@@ -61,6 +68,12 @@ type Props = {
   onTownDecay: (share: number) => void
   /** Age/stage lines drawn in the screen chrome, outside the canvas. */
   onAgeReadout: (lines: string[], waterNote: boolean) => void
+  phase: TownPhase
+  timelineT: number
+  timelinePlaying: boolean
+  onTimelineT: (t: number) => void
+  onPhase: (phase: TownPhase) => void
+  onTimelinePlaying: (playing: boolean) => void
 }
 
 type ChunkEntry = {
@@ -875,6 +888,47 @@ function TownScaffoldDecor({
   return <lineSegments geometry={scaffoldGeo} material={scaffoldMat} raycast={() => null} />
 }
 
+/**
+ * Must live inside <Canvas> — R3F useFrame throws outside the provider and blanked the tab.
+ * Advances a live clock ref every frame; React state is throttled so play does not remount the town.
+ */
+function IntroTimelineDriver({
+  phaseRef,
+  playingRef,
+  timelineTRef,
+  onTimelineTRef,
+  onPhaseRef,
+  onTimelinePlayingRef,
+}: {
+  phaseRef: MutableRefObject<TownPhase>
+  playingRef: MutableRefObject<boolean>
+  timelineTRef: MutableRefObject<number>
+  onTimelineTRef: MutableRefObject<(t: number) => void>
+  onPhaseRef: MutableRefObject<(phase: TownPhase) => void>
+  onTimelinePlayingRef: MutableRefObject<(playing: boolean) => void>
+}) {
+  const publishWait = useRef(0)
+  useFrame((_, delta) => {
+    if (phaseRef.current !== 'intro' || !playingRef.current) return
+    const prev = timelineTRef.current
+    const next = Math.min(INTRO_DURATION, prev + delta * INTRO_PLAY_SPEED)
+    if (!(next > prev)) return
+    timelineTRef.current = next
+    publishWait.current += delta
+    const atEnd = next >= INTRO_DURATION
+    // ~10 Hz UI/scrubber sync — ages read the live ref every frame in EpSalvageTown.
+    if (atEnd || publishWait.current >= 0.1) {
+      publishWait.current = 0
+      onTimelineTRef.current(next)
+    }
+    if (atEnd) {
+      onTimelinePlayingRef.current(false)
+      onPhaseRef.current('ongoing')
+    }
+  })
+  return null
+}
+
 /** Weathering v3 — full copy of Weathering, independently owned under weatheringV3/. */
 export default function WeatheringV3Scene({
   terrain,
@@ -887,6 +941,12 @@ export default function WeatheringV3Scene({
   decayReset,
   onTownDecay,
   onAgeReadout,
+  phase,
+  timelineT,
+  timelinePlaying,
+  onTimelineT,
+  onPhase,
+  onTimelinePlaying,
 }: Props) {
   const groundPlaceRef = useRef<((wx: number, wy: number, wz: number) => void) | null>(null)
   const townCells = useRef<Map<string, GridCell>>(new Map())
@@ -909,6 +969,17 @@ export default function WeatheringV3Scene({
     () => ({ ...gridLayout, buildingScale: ep.buildingScale ?? 3 }),
     [gridLayout, ep.buildingScale],
   )
+  const phaseRef = useRef(phase)
+  phaseRef.current = phase
+  const timelineTRef = useRef(timelineT)
+  const playingRef = useRef(timelinePlaying)
+  playingRef.current = timelinePlaying
+  const onTimelineTRef = useRef(onTimelineT)
+  onTimelineTRef.current = onTimelineT
+  const onPhaseRef = useRef(onPhase)
+  onPhaseRef.current = onPhase
+  const onTimelinePlayingRef = useRef(onTimelinePlaying)
+  onTimelinePlayingRef.current = onTimelinePlaying
   const backgroundSettings = useMemo<BackgroundSettings>(
     () => ({
       density: ep.backgroundDensity ?? 22,
@@ -946,9 +1017,21 @@ export default function WeatheringV3Scene({
   )
 
   useEffect(() => {
-    clearGrid(townCells.current)
+    seedIntactCity(
+      townCells.current,
+      gridLayout,
+      heightAt,
+      ep.maxStories ?? 8,
+      decay.fireBarrelChance,
+    )
     setClaimRevision((value) => value + 1)
+    bumpSettlement()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reseed on grid reset only
   }, [gridReset])
+
+  // Scrub / skip / reset must update the live clock during render so child handoff
+  // effects (EpSalvageTown) see the new time — useEffect runs too late (children first).
+  if (!timelinePlaying) timelineTRef.current = timelineT
 
   const onGroundTap = useMemo(() => {
     return () => {
@@ -956,13 +1039,23 @@ export default function WeatheringV3Scene({
     }
   }, [])
 
+  const townEditable = !firstPerson && phase === 'ongoing'
+
   return (
     <Canvas
       className="scene-canvas"
-      camera={{ position: [8, 5, 10], fov: 48, near: 0.05, far: 4000 }}
+      camera={{ position: [22, 14, 28], fov: 42, near: 0.05, far: 4000 }}
       dpr={[1, 2]}
       gl={{ antialias: true }}
     >
+      <IntroTimelineDriver
+        phaseRef={phaseRef}
+        playingRef={playingRef}
+        timelineTRef={timelineTRef}
+        onTimelineTRef={onTimelineTRef}
+        onPhaseRef={onPhaseRef}
+        onTimelinePlayingRef={onTimelinePlayingRef}
+      />
       <color attach="background" args={[EP_SKY_COLOR]} />
       <DeadSky />
       <FogController
@@ -979,7 +1072,7 @@ export default function WeatheringV3Scene({
         terrain={terrain}
         fogDensity={ep.fogDensity}
         firstPerson={firstPerson}
-        editEnabled={!firstPerson}
+        editEnabled={false}
         onTapPlace={onGroundTap}
       />
       <PlayerVoxelWorld
@@ -987,7 +1080,7 @@ export default function WeatheringV3Scene({
         voxel={voxel}
         gradient={EP_MESH_GRADIENT}
         grain={ep.glitchIntensity}
-        editEnabled={!firstPerson}
+        editEnabled={false}
         groundPlaceRef={groundPlaceRef}
       />
       <BackgroundBuildings
@@ -1000,17 +1093,17 @@ export default function WeatheringV3Scene({
       <EpGrid
         layout={gridLayout}
         visible={ep.gridVisible}
-        editEnabled={!firstPerson}
+        editEnabled={townEditable}
         onCell={(ix, iz, y) => editBridge.current(ix, iz, y)}
       />
       <EpSalvageTown
         cellsRef={townCells}
         layout={townLayout}
-        editEnabled={!firstPerson}
+        editEnabled={townEditable}
         grain={ep.glitchIntensity}
         claimRevision={claimRevision}
         editBridge={editBridge}
-        autoGrow={ep.autoGrow}
+        autoGrow={ep.autoGrow && phase === 'ongoing'}
         autoGrowSeconds={ep.autoGrowSeconds}
         maxStories={ep.maxStories ?? 8}
         heightAt={heightAt}
@@ -1021,7 +1114,40 @@ export default function WeatheringV3Scene({
         onTownDecay={onTownDecay}
         onAgeReadout={onAgeReadout}
         onSettlement={bumpSettlement}
+        phase={phase}
+        timelineT={timelineT}
+        timelineClockRef={timelineTRef}
       />
+      <Html
+        fullscreen
+        style={{ pointerEvents: 'none' }}
+        zIndexRange={[20, 0]}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            left: 16,
+            bottom: 16,
+            maxWidth: 420,
+            fontFamily: 'Martian Mono, ui-monospace, monospace',
+            fontSize: 11,
+            lineHeight: 1.35,
+            color: '#e8eaed',
+            background: 'rgba(0,0,0,0.72)',
+            border: '1px solid #5a6570',
+            padding: '8px 10px',
+          }}
+        >
+          <div style={{ color: phase === 'intro' ? '#7ec8ff' : '#c4e07a', fontWeight: 600 }}>
+            {formatPhaseLabel(phase, timelineT)}
+          </div>
+          <div style={{ opacity: 0.85, marginTop: 4 }}>
+            {phase === 'intro'
+              ? 'Staggered vacating · shells persist · end = mixed stages'
+              : 'Continuous aging · claim empty lots only · no clear/restore'}
+          </div>
+        </div>
+      </Html>
       <OrbitControls
         makeDefault
         enabled={!firstPerson}

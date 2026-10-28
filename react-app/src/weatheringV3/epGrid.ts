@@ -41,16 +41,6 @@ export function stageMarks(settledAt: number, abandonedAt: number, reclaimedAt: 
   return { settled, abandoned, reclaimed }
 }
 
-/** Stable 0–1 roll. A cell keeps a barrel when this is below the Decay chance. */
-export function cellInhabitRoll(ix: number, iz: number) {
-  const n = Math.sin(ix * 127.1 + iz * 311.7 + 21 * 17.3) * 43758.5453
-  return n - Math.floor(n)
-}
-
-export function cellHasBarrel(ix: number, iz: number, chance: number) {
-  return cellInhabitRoll(ix, iz) < chance
-}
-
 export function cellStage(age: number, marks: StageThresholds = CELL_STAGE_AT): CellStage {
   if (age < marks.settled) return 'new'
   if (age < marks.abandoned) return 'settled'
@@ -100,8 +90,13 @@ export type GridCell = {
   baseY: number
   /** Seconds since this cell was claimed. Advances while the scene is mounted. */
   age: number
-  /** Stable tag. Abandoned inhabited cells keep a barrel fire instead of a dead bulb. */
+  /** Stable tag. Inhabited lots get presence-lamp flicker; no ground fires. */
   inhabited: boolean
+  /**
+   * Per-cell absence clock multiplier from spatial vacate profile (rim vs core).
+   * Defaults to 1 when omitted (legacy / unset).
+   */
+  vacateRate?: number
 }
 
 export type XZ = [number, number]
@@ -110,7 +105,6 @@ export type XZ = [number, number]
 export const GRID_HALF_EXTENT = 260
 export const GRID_DEBUG_Y = 0.55
 
-const NOISE_FREQ = 0.18
 const AMP_SCALE = 0.42
 
 export const defaultGridLayout: GridLayout = {
@@ -146,13 +140,11 @@ export function clearGrid(cells: Map<string, GridCell>) {
 
 /**
  * Next lot for idle growth. An empty map seeds the origin.
- * Otherwise the pick is an unclaimed cell sharing an edge with a claimed one,
- * weighted toward cells that already touch more of the settlement.
+ * Otherwise: unclaimed edge cell with the most claimed neighbors (density).
+ * Ties break by lowest iz, then ix — no random roll.
+ * @deprecated Prefer pickGrowthCellByDensity from lotRules.ts (same rule).
  */
-export function pickGrowthCell(
-  cells: ReadonlyMap<string, GridCell>,
-  random: () => number = Math.random,
-) {
+export function pickGrowthCell(cells: ReadonlyMap<string, GridCell>) {
   if (cells.size === 0) return { ix: 0, iz: 0 }
   const options: { ix: number; iz: number; weight: number }[] = []
   const seen = new Set<string>()
@@ -171,50 +163,24 @@ export function pickGrowthCell(
     }
   }
   if (options.length === 0) return null
-  let total = 0
-  for (const option of options) total += option.weight
-  let roll = random() * total
-  for (const option of options) {
-    roll -= option.weight
-    if (roll <= 0) return { ix: option.ix, iz: option.iz }
-  }
-  const last = options[options.length - 1]
-  return { ix: last.ix, iz: last.iz }
+  options.sort((a, b) => b.weight - a.weight || a.iz - b.iz || a.ix - b.ix)
+  const best = options[0]!
+  return { ix: best.ix, iz: best.iz }
 }
 
-function hash(ix: number, iz: number) {
-  const n = Math.sin(ix * 127.1 + iz * 311.7) * 43758.5453
-  return n - Math.floor(n)
-}
-
-function fade(t: number) {
-  return t * t * (3 - 2 * t)
-}
-
-/** Value noise in 0..1. Low frequency when sampled with a small multiplier on ix/iz. */
-function noise2(x: number, z: number) {
-  const x0 = Math.floor(x)
-  const z0 = Math.floor(z)
-  const tx = fade(x - x0)
-  const tz = fade(z - z0)
-  const v00 = hash(x0, z0)
-  const v10 = hash(x0 + 1, z0)
-  const v01 = hash(x0, z0 + 1)
-  const v11 = hash(x0 + 1, z0 + 1)
-  const a = v00 + (v10 - v00) * tx
-  const b = v01 + (v11 - v01) * tx
-  return a + (b - a) * tz
-}
-
-/** World XZ of lattice vertex (ix, iz). Same integers always return the same point for a layout. */
+/**
+ * World XZ of lattice vertex (ix, iz).
+ * Warp applies a readable shear: X shifts with iz, Z shifts with ix (panel strength).
+ * No per-corner hash jitter.
+ */
 export function cornerXZ(ix: number, iz: number, layout: GridLayout): XZ {
   const x = ix * layout.cellSize
   const z = iz * layout.cellSize
   if (layout.warp === 0) return [x, z]
   const amp = layout.warp * layout.cellSize * AMP_SCALE
-  const ox = (noise2(ix * NOISE_FREQ, iz * NOISE_FREQ) * 2 - 1) * amp
-  const oz = (noise2(ix * NOISE_FREQ + 50, iz * NOISE_FREQ + 23) * 2 - 1) * amp
-  return [x + ox, z + oz]
+  const shearX = Math.max(-1, Math.min(1, iz * 0.12))
+  const shearZ = Math.max(-1, Math.min(1, ix * 0.12))
+  return [x + amp * shearX, z + amp * shearZ]
 }
 
 /** Corners in south-west, south-east, north-east, north-west order. */
