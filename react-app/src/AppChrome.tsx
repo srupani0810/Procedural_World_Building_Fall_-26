@@ -30,6 +30,8 @@ import type {
   EpParams as V3EpParams,
 } from './weatheringV3/epParams.ts'
 import type { TownPhase as V3TownPhase } from './weatheringV3/timeline.ts'
+import { DecayPanel } from './decay/DecayPanel.tsx'
+import type { DecayViewParams } from './decay/params.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -98,6 +100,11 @@ type AppChromeProps = {
   onV3TimelineT: (t: number) => void
   onV3TimelinePlaying: (playing: boolean) => void
   onV3EnterOngoing: () => void
+  decayTerrain: TerrainParams
+  onDecayTerrain: (patch: Partial<TerrainParams>) => void
+  onResetDecayTerrain: () => void
+  decayView: DecayViewParams
+  onDecayView: (patch: Partial<DecayViewParams>) => void
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -107,7 +114,7 @@ type AppChromeProps = {
   onReset: () => void
 }
 
-const TELEMETRY_STAGE = /\b(abandoned|reclaimed|settled|inhabited|flicker|on|off)\b/g
+const TELEMETRY_STAGE = /\b(abandoned|reclaimed|settled|held|inhabited|flicker|on|off)\b/g
 
 /** Stage / process words use the panel accent. Cell ids and ages stay in the body color. */
 function colorTelemetryStages(text: string) {
@@ -116,6 +123,7 @@ function colorTelemetryStages(text: string) {
     part === 'abandoned' ||
     part === 'reclaimed' ||
     part === 'settled' ||
+    part === 'held' ||
     part === 'inhabited' ||
     part === 'flicker' ||
     part === 'on' ||
@@ -196,6 +204,11 @@ export default function AppChrome({
   onV3TimelineT,
   onV3TimelinePlaying,
   onV3EnterOngoing,
+  decayTerrain,
+  onDecayTerrain,
+  onResetDecayTerrain,
+  decayView,
+  onDecayView,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -210,6 +223,7 @@ export default function AppChrome({
   const epExtra = epTerrain.extras[epTerrain.noiseId]
   const showShift2 = mode === 'shift2'
   const showShift3 = mode === 'shift3'
+  const showDecay = mode === 'decay'
   const showSim = mode === '2d' && twoDTab === 'sim'
   const showVoxels = mode === 'voxels'
   const showShaders = mode === 'shaders'
@@ -273,19 +287,21 @@ export default function AppChrome({
       <aside className="chrome-panel" aria-label="Parameters">
         <div className="chrome-panel-header">
           <h2>
-            {showShift3
-              ? 'Weathering v3'
-              : showShift2
-                ? 'Weathering v2'
-                : showShift
-                  ? 'Weathering'
-                  : showEp
-                    ? 'Playground'
-                    : showVoxels
-                      ? 'Voxels'
-                      : showShaders
-                        ? 'Shaders'
-                        : 'Terrain'}
+            {showDecay
+              ? 'DECAY'
+              : showShift3
+                ? 'Weathering v3'
+                : showShift2
+                  ? 'Weathering v2'
+                  : showShift
+                    ? 'Weathering'
+                    : showEp
+                      ? 'Playground'
+                      : showVoxels
+                        ? 'Voxels'
+                        : showShaders
+                          ? 'Shaders'
+                          : 'Terrain'}
           </h2>
         </div>
 
@@ -364,6 +380,15 @@ export default function AppChrome({
             onClick={() => onMode('shift3')}
           >
             Weathering v3
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={showDecay}
+            className={showDecay ? 'is-active' : undefined}
+            onClick={() => onMode('decay')}
+          >
+            DECAY
           </button>
         </div>
 
@@ -644,6 +669,16 @@ export default function AppChrome({
             onResetGrid={onResetV2Grid}
             onStep={onV2Step}
             census={v2Census}
+          />
+        ) : null}
+
+        {showDecay ? (
+          <DecayPanel
+            terrain={decayTerrain}
+            view={decayView}
+            onTerrain={onDecayTerrain}
+            onView={onDecayView}
+            onResetTerrain={onResetDecayTerrain}
           />
         ) : null}
 
@@ -1054,7 +1089,7 @@ export default function AppChrome({
               />
             </ChromeSection>
           </>
-        ) : showEp || showShift || showShift2 || showShift3 ? null : (
+        ) : showEp || showShift || showShift2 || showShift3 || showDecay ? null : (
           <>
             <ChromeSection
               title="Noise"

@@ -136,6 +136,16 @@ Candidates to discuss before locking (examples only, not yet canon):
 
 ---
 
+## DECAY tab (settled for this greenfield tab)
+
+New app mode **DECAY** (`react-app/src/decay/`) — **no shared settlement code with Weathering / v2 / v3**.
+
+**Current slice:** empty **noise heightfield terrain** only (same FastNoise / streamed-plane approach as Weathering; independent terrain state). No seed city, claims, auto-grow, cells, or process log yet — settlement returns **incrementally** on this field.
+
+Open items in *Still open* still apply (precedents, primary typology, strip-out, etc.).
+
+---
+
 ## Design brief rules
 
 1. **Read this file first** before any new feature, visual change, or system.

@@ -11,6 +11,9 @@ import WeatheringV2Scene from './weatheringV2/WeatheringV2Scene.tsx'
 import WeatheringV3Scene from './weatheringV3/WeatheringV3Scene.tsx'
 import type { TownPhase } from './weatheringV3/timeline.ts'
 import { INTRO_DURATION } from './weatheringV3/timeline.ts'
+import DecayScene from './decay/DecayScene.tsx'
+import { createDefaultDecayTerrain, defaultDecayView } from './decay/params.ts'
+import type { DecayViewParams } from './decay/params.ts'
 import { defaultV2Params } from './weatheringV2/params.ts'
 import type { V2Params } from './weatheringV2/params.ts'
 import { createDefaultV2Terrain, createDefaultV2Voxel } from './weatheringV2/worldDefaults.ts'
@@ -103,6 +106,9 @@ function App() {
   const [v3Phase, setV3Phase] = useState<TownPhase>('intro')
   const [v3TimelineT, setV3TimelineT] = useState(0)
   const [v3TimelinePlaying, setV3TimelinePlaying] = useState(false)
+  /** DECAY tab — greenfield; terrain only for now (not shared with Weathering / v2 / v3). */
+  const [decayTerrain, setDecayTerrain] = useState<TerrainParams>(() => createDefaultDecayTerrain())
+  const [decayView, setDecayView] = useState<DecayViewParams>(defaultDecayView)
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -235,6 +241,8 @@ function App() {
             onPhase={setV3Phase}
             onTimelinePlaying={setV3TimelinePlaying}
           />
+        ) : mode === 'decay' ? (
+          <DecayScene terrain={decayTerrain} view={decayView} />
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -351,6 +359,13 @@ function App() {
           setV3TimelinePlaying(false)
           setV3Phase('ongoing')
         }}
+        decayTerrain={decayTerrain}
+        onDecayTerrain={(patch) =>
+          setDecayTerrain((current) => ({ ...current, ...normalizeTerrainPatch(patch) }))
+        }
+        onResetDecayTerrain={() => setDecayTerrain(createDefaultDecayTerrain())}
+        decayView={decayView}
+        onDecayView={(patch) => setDecayView((c) => ({ ...c, ...patch }))}
         firstPerson={
           mode === 'ep'
             ? epFirstPerson
