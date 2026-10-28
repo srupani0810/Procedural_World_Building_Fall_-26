@@ -22,6 +22,8 @@ import {
 } from './epParams.ts'
 import { ShiftPanel } from './weathering/ShiftPanel.tsx'
 import type { DecayParams, EpParams as ShiftEpParams } from './weathering/epParams.ts'
+import { WeatheringV2Panel } from './weatheringV2/WeatheringV2Panel.tsx'
+import type { V2Params } from './weatheringV2/params.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -62,6 +64,16 @@ type AppChromeProps = {
   onResetDecay: () => void
   townDecay: number
   ageReadout: { lines: string[]; waterNote: boolean }
+  v2Params: V2Params
+  onV2Change: (patch: Partial<V2Params>) => void
+  v2Terrain: TerrainParams
+  onV2TerrainChange: (patch: Partial<TerrainParams>) => void
+  v2Voxel: VoxelParams
+  onV2VoxelChange: (patch: Partial<VoxelParams>) => void
+  onResetV2Grid: () => void
+  onV2Step: () => void
+  v2Log: string[]
+  v2Census: string
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -126,6 +138,16 @@ export default function AppChrome({
   onResetDecay,
   townDecay,
   ageReadout,
+  v2Params,
+  onV2Change,
+  v2Terrain,
+  onV2TerrainChange,
+  v2Voxel,
+  onV2VoxelChange,
+  onResetV2Grid,
+  onV2Step,
+  v2Log,
+  v2Census,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -138,6 +160,7 @@ export default function AppChrome({
   const extra = params.extras[params.noiseId]
   const epOption = getNoiseOption(epTerrain.noiseId)
   const epExtra = epTerrain.extras[epTerrain.noiseId]
+  const showShift2 = mode === 'shift2'
   const showSim = mode === '2d' && twoDTab === 'sim'
   const showVoxels = mode === 'voxels'
   const showShaders = mode === 'shaders'
@@ -169,18 +192,34 @@ export default function AppChrome({
         </aside>
       ) : null}
 
+      {showShift2 ? (
+        <aside className="chrome-panel chrome-telemetry" aria-label="Process log">
+          <ChromeSection
+            title="Process log"
+            tip="Claims, neighbor rules, and vacating stage changes as events."
+            defaultOpen
+          >
+            <pre className="chrome-telemetry-readout">
+              {v2Log.length === 0 ? 'log — waiting for generation' : v2Log.join('\n')}
+            </pre>
+          </ChromeSection>
+        </aside>
+      ) : null}
+
       <aside className="chrome-panel" aria-label="Parameters">
         <div className="chrome-panel-header">
           <h2>
-            {showShift
-              ? 'Weathering'
-              : showEp
-                ? 'Playground'
-                : showVoxels
-                ? 'Voxels'
-                : showShaders
-                  ? 'Shaders'
-                  : 'Terrain'}
+            {showShift2
+              ? 'Weathering v2'
+              : showShift
+                ? 'Weathering'
+                : showEp
+                  ? 'Playground'
+                  : showVoxels
+                    ? 'Voxels'
+                    : showShaders
+                      ? 'Shaders'
+                      : 'Terrain'}
           </h2>
         </div>
 
@@ -241,6 +280,15 @@ export default function AppChrome({
             onClick={() => onMode('shift')}
           >
             Weathering
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={showShift2}
+            className={showShift2 ? 'is-active' : undefined}
+            onClick={() => onMode('shift2')}
+          >
+            Weathering v2
           </button>
         </div>
 
@@ -507,6 +555,20 @@ export default function AppChrome({
             onDecayChange={onDecayChange}
             onResetDecay={onResetDecay}
             townDecay={townDecay}
+          />
+        ) : null}
+
+        {showShift2 ? (
+          <WeatheringV2Panel
+            params={v2Params}
+            onChange={onV2Change}
+            terrain={v2Terrain}
+            onTerrainChange={onV2TerrainChange}
+            voxel={v2Voxel}
+            onVoxelChange={onV2VoxelChange}
+            onResetGrid={onResetV2Grid}
+            onStep={onV2Step}
+            census={v2Census}
           />
         ) : null}
 
@@ -892,7 +954,7 @@ export default function AppChrome({
               />
             </ChromeSection>
           </>
-        ) : showEp || showShift ? null : (
+        ) : showEp || showShift || showShift2 ? null : (
           <>
             <ChromeSection
               title="Noise"

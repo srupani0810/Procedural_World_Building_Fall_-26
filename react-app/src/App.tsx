@@ -7,6 +7,10 @@ import VoxelScene from './VoxelScene.tsx'
 import ShaderScene from './ShaderScene.tsx'
 import ExperientialScene from './ExperientialScene.tsx'
 import WeatheringScene from './weathering/WeatheringScene.tsx'
+import WeatheringV2Scene from './weatheringV2/WeatheringV2Scene.tsx'
+import { defaultV2Params } from './weatheringV2/params.ts'
+import type { V2Params } from './weatheringV2/params.ts'
+import { createDefaultV2Terrain, createDefaultV2Voxel } from './weatheringV2/worldDefaults.ts'
 import { HEIGHTMAP_SIZE, createHeightmap, defaultErosionParams } from './erosion.ts'
 import type { ErosionParams } from './erosion.ts'
 import {
@@ -60,6 +64,13 @@ function App() {
   const onAgeReadout = useCallback((lines: string[], waterNote: boolean) => {
     setAgeReadout({ lines, waterNote })
   }, [])
+  const [v2Params, setV2Params] = useState<V2Params>(defaultV2Params)
+  const [v2Terrain, setV2Terrain] = useState<TerrainParams>(() => createDefaultV2Terrain())
+  const [v2Voxel, setV2Voxel] = useState<VoxelParams>(() => createDefaultV2Voxel())
+  const [v2GridReset, setV2GridReset] = useState(0)
+  const [v2StepToken, setV2StepToken] = useState(0)
+  const [v2Log, setV2Log] = useState<string[]>([])
+  const [v2Census, setV2Census] = useState('')
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -153,6 +164,16 @@ function App() {
             onTownDecay={setTownDecay}
             onAgeReadout={onAgeReadout}
           />
+        ) : mode === 'shift2' ? (
+          <WeatheringV2Scene
+            terrain={v2Terrain}
+            voxel={v2Voxel}
+            params={v2Params}
+            gridReset={v2GridReset}
+            stepToken={v2StepToken}
+            onLog={setV2Log}
+            onCensus={setV2Census}
+          />
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -212,6 +233,18 @@ function App() {
         onResetDecay={() => setDecayReset((value) => value + 1)}
         townDecay={townDecay}
         ageReadout={ageReadout}
+        v2Params={v2Params}
+        onV2Change={(patch) => setV2Params((current) => ({ ...current, ...patch }))}
+        v2Terrain={v2Terrain}
+        onV2TerrainChange={(patch) =>
+          setV2Terrain((current) => ({ ...current, ...normalizeTerrainPatch(patch) }))
+        }
+        v2Voxel={v2Voxel}
+        onV2VoxelChange={(patch) => setV2Voxel((current) => ({ ...current, ...patch }))}
+        onResetV2Grid={() => setV2GridReset((value) => value + 1)}
+        onV2Step={() => setV2StepToken((value) => value + 1)}
+        v2Log={v2Log}
+        v2Census={v2Census}
         firstPerson={
           mode === 'ep' ? epFirstPerson : mode === 'shift' ? shiftFirstPerson : firstPerson
         }

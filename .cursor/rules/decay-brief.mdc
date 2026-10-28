@@ -1,0 +1,29 @@
+---
+description: Read decay.md as the design brief before any feature/visual/system work; ask on open stance
+alwaysApply: true
+---
+
+# Decay design brief
+
+`decay.md` at the project root is the standing conceptual position and design brief for this codebase — not optional docs.
+
+## Before implementing
+
+Before any new feature, visual change, or system (Weathering, EP, buildings, lighting, atmosphere, growth, wear, water, scenery, camera, UI that frames those systems):
+
+1. **Read `decay.md` first.**
+2. Check the work against its **stance** (decay as abandonment under deindustrialization; leftover industrial shell as evidence of extraction and discard; legibility after use; time on the leftover; concurrent growth as relocating attention; lead with how decay happens).
+3. Check against its **method** (per-cell upkeep absence, not catastrophe; concurrent growth and decay; neighbor-rule architecture, not authored ruin set-pieces).
+4. If the change would read as ruins spectacle, decay-as-mood, empty “loss,” or disaster framing, **stop and ask** or redesign to the brief.
+
+## Ask throughout
+
+This brief is unfinished by design. Sections marked **open** in `decay.md` must not be filled by invention.
+
+- Prefer **one or a few questions** to the author over assuming settled theory, precedents, or visual doctrine.
+- When a conversation **settles** a claim, **update `decay.md`** so it stays the source of truth.
+- Do not use vague “inspired by” precedents; only lock precedents the author has critically engaged.
+
+## Scope note
+
+Existing binding constraints from course/session work (e.g. Weathering vs EP clone boundaries) still apply. `decay.md` governs *meaning and design direction* for decay-related and settlement systems; it does not authorize rewriting unrelated engines.
