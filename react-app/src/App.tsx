@@ -8,6 +8,7 @@ import ShaderScene from './ShaderScene.tsx'
 import ExperientialScene from './ExperientialScene.tsx'
 import WeatheringScene from './weathering/WeatheringScene.tsx'
 import WeatheringV2Scene from './weatheringV2/WeatheringV2Scene.tsx'
+import WeatheringV3Scene from './weatheringV3/WeatheringV3Scene.tsx'
 import { defaultV2Params } from './weatheringV2/params.ts'
 import type { V2Params } from './weatheringV2/params.ts'
 import { createDefaultV2Terrain, createDefaultV2Voxel } from './weatheringV2/worldDefaults.ts'
@@ -26,6 +27,16 @@ import {
   defaultEpParams as defaultShiftParams,
 } from './weathering/epParams.ts'
 import type { DecayParams, EpParams as ShiftEpParams } from './weathering/epParams.ts'
+import {
+  createDefaultEpTerrain as createDefaultV3Terrain,
+  createDefaultEpVoxel as createDefaultV3Voxel,
+  defaultDecayParams as defaultV3DecayParams,
+  defaultEpParams as defaultV3Params,
+} from './weatheringV3/epParams.ts'
+import type {
+  DecayParams as V3DecayParams,
+  EpParams as V3EpParams,
+} from './weatheringV3/epParams.ts'
 import { defaultTerrainParams, normalizeTerrainPatch } from './terrainParams.ts'
 import type { TerrainParams, TwoDTab, ViewMode } from './terrainParams.ts'
 import { defaultHeightGradient } from './heightGradient.ts'
@@ -71,6 +82,22 @@ function App() {
   const [v2StepToken, setV2StepToken] = useState(0)
   const [v2Log, setV2Log] = useState<string[]>([])
   const [v2Census, setV2Census] = useState('')
+  /** Weathering v3 — independent clone of Weathering state (not shared with shift / v2). */
+  const [v3Params, setV3Params] = useState<V3EpParams>(defaultV3Params)
+  const [v3Terrain, setV3Terrain] = useState<TerrainParams>(() => createDefaultV3Terrain())
+  const [v3Voxel, setV3Voxel] = useState<VoxelParams>(() => createDefaultV3Voxel())
+  const [v3FirstPerson, setV3FirstPerson] = useState(false)
+  const [v3GridReset, setV3GridReset] = useState(0)
+  const [v3DecayParams, setV3DecayParams] = useState<V3DecayParams>(defaultV3DecayParams)
+  const [v3DecayReset, setV3DecayReset] = useState(0)
+  const [v3TownDecay, setV3TownDecay] = useState(0)
+  const [v3AgeReadout, setV3AgeReadout] = useState<{ lines: string[]; waterNote: boolean }>({
+    lines: [],
+    waterNote: false,
+  })
+  const onV3AgeReadout = useCallback((lines: string[], waterNote: boolean) => {
+    setV3AgeReadout({ lines, waterNote })
+  }, [])
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -107,6 +134,9 @@ function App() {
     }
     if (next !== 'shift') {
       setShiftFirstPerson(false)
+    }
+    if (next !== 'shift3') {
+      setV3FirstPerson(false)
     }
   }
 
@@ -173,6 +203,19 @@ function App() {
             stepToken={v2StepToken}
             onLog={setV2Log}
             onCensus={setV2Census}
+          />
+        ) : mode === 'shift3' ? (
+          <WeatheringV3Scene
+            terrain={v3Terrain}
+            voxel={v3Voxel}
+            ep={v3Params}
+            firstPerson={v3FirstPerson}
+            onExitFirstPerson={() => setV3FirstPerson(false)}
+            gridReset={v3GridReset}
+            decay={v3DecayParams}
+            decayReset={v3DecayReset}
+            onTownDecay={setV3TownDecay}
+            onAgeReadout={onV3AgeReadout}
           />
         ) : showSim ? (
           <HeightMapView
@@ -245,17 +288,39 @@ function App() {
         onV2Step={() => setV2StepToken((value) => value + 1)}
         v2Log={v2Log}
         v2Census={v2Census}
+        v3Params={v3Params}
+        onV3Change={(patch) => setV3Params((current) => ({ ...current, ...patch }))}
+        v3Terrain={v3Terrain}
+        onV3TerrainChange={(patch) =>
+          setV3Terrain((current) => ({ ...current, ...normalizeTerrainPatch(patch) }))
+        }
+        v3Voxel={v3Voxel}
+        onV3VoxelChange={(patch) => setV3Voxel((current) => ({ ...current, ...patch }))}
+        onResetV3Grid={() => setV3GridReset((value) => value + 1)}
+        v3DecayParams={v3DecayParams}
+        onV3DecayChange={(patch) => setV3DecayParams((current) => ({ ...current, ...patch }))}
+        onResetV3Decay={() => setV3DecayReset((value) => value + 1)}
+        v3TownDecay={v3TownDecay}
+        v3AgeReadout={v3AgeReadout}
         firstPerson={
-          mode === 'ep' ? epFirstPerson : mode === 'shift' ? shiftFirstPerson : firstPerson
+          mode === 'ep'
+            ? epFirstPerson
+            : mode === 'shift'
+              ? shiftFirstPerson
+              : mode === 'shift3'
+                ? v3FirstPerson
+                : firstPerson
         }
         onJumpIn={() => {
           if (mode === 'ep') setEpFirstPerson(true)
           else if (mode === 'shift') setShiftFirstPerson(true)
+          else if (mode === 'shift3') setV3FirstPerson(true)
           else setFirstPerson(true)
         }}
         onExitFirstPerson={() => {
           if (mode === 'ep') setEpFirstPerson(false)
           else if (mode === 'shift') setShiftFirstPerson(false)
+          else if (mode === 'shift3') setV3FirstPerson(false)
           else setFirstPerson(false)
         }}
         onResetGrid={() => setGridReset((value) => value + 1)}

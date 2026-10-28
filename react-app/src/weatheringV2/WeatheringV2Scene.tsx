@@ -41,7 +41,7 @@ export default function WeatheringV2Scene({
 
   return (
     <Canvas
-      camera={{ position: [14, 12, 18], fov: 42, near: 0.1, far: 4000 }}
+      camera={{ position: [11, 9, 14], fov: 42, near: 0.1, far: 4000 }}
       gl={{ antialias: true }}
       dpr={[1, 2]}
       style={{ width: '100%', height: '100%' }}

@@ -27,7 +27,7 @@ export function resolveCell(x: number, z: number, cellSize: number) {
   return { ix, iz }
 }
 
-const ORTHO = [
+export const ORTHO = [
   { dix: 0, diz: -1, name: 'south' },
   { dix: 1, diz: 0, name: 'east' },
   { dix: 0, diz: 1, name: 'north' },

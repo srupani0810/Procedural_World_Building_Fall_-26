@@ -1,4 +1,4 @@
-# React 101
+  # React 101
 
 A short, practical intro if you have never used React **or** the command line. Follow the steps in order. You do not need to memorize anything. Copy the commands, press Return, and look things up when you get stuck.
 

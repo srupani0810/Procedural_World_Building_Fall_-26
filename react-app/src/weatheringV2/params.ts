@@ -26,7 +26,8 @@ export const defaultV2Params: V2Params = {
   vacatedAt: 14,
   impactedAt: 28,
   decaySpeed: 1,
-  autoGrow: true,
+  /** Off by default so the seeded mixed-program cluster stays inspectable. */
+  autoGrow: false,
   growEvery: 4,
   maxStories: 5,
   steppedGeneration: false,

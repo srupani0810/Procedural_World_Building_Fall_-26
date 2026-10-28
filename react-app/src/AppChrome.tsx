@@ -24,6 +24,11 @@ import { ShiftPanel } from './weathering/ShiftPanel.tsx'
 import type { DecayParams, EpParams as ShiftEpParams } from './weathering/epParams.ts'
 import { WeatheringV2Panel } from './weatheringV2/WeatheringV2Panel.tsx'
 import type { V2Params } from './weatheringV2/params.ts'
+import { WeatheringV3Panel } from './weatheringV3/WeatheringV3Panel.tsx'
+import type {
+  DecayParams as V3DecayParams,
+  EpParams as V3EpParams,
+} from './weatheringV3/epParams.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -74,6 +79,18 @@ type AppChromeProps = {
   onV2Step: () => void
   v2Log: string[]
   v2Census: string
+  v3Params: V3EpParams
+  onV3Change: (patch: Partial<V3EpParams>) => void
+  v3Terrain: TerrainParams
+  onV3TerrainChange: (patch: Partial<TerrainParams>) => void
+  v3Voxel: VoxelParams
+  onV3VoxelChange: (patch: Partial<VoxelParams>) => void
+  onResetV3Grid: () => void
+  v3DecayParams: V3DecayParams
+  onV3DecayChange: (patch: Partial<V3DecayParams>) => void
+  onResetV3Decay: () => void
+  v3TownDecay: number
+  v3AgeReadout: { lines: string[]; waterNote: boolean }
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -148,6 +165,18 @@ export default function AppChrome({
   onV2Step,
   v2Log,
   v2Census,
+  v3Params,
+  onV3Change,
+  v3Terrain,
+  onV3TerrainChange,
+  v3Voxel,
+  onV3VoxelChange,
+  onResetV3Grid,
+  v3DecayParams,
+  onV3DecayChange,
+  onResetV3Decay,
+  v3TownDecay,
+  v3AgeReadout,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -161,6 +190,7 @@ export default function AppChrome({
   const epOption = getNoiseOption(epTerrain.noiseId)
   const epExtra = epTerrain.extras[epTerrain.noiseId]
   const showShift2 = mode === 'shift2'
+  const showShift3 = mode === 'shift3'
   const showSim = mode === '2d' && twoDTab === 'sim'
   const showVoxels = mode === 'voxels'
   const showShaders = mode === 'shaders'
@@ -192,6 +222,21 @@ export default function AppChrome({
         </aside>
       ) : null}
 
+      {showShift3 ? (
+        <aside className="chrome-panel chrome-telemetry" aria-label="Town age">
+          <ChromeSection title="Town age" tip="Show or hide the age and stage readout." defaultOpen>
+            {v3AgeReadout.waterNote ? (
+              <div className="chrome-telemetry-alert">water — no build</div>
+            ) : null}
+            <pre className="chrome-telemetry-readout">
+              {v3AgeReadout.lines.length === 0
+                ? 'age — no claimed cells'
+                : colorTelemetryStages(`age (s) · stage\n${v3AgeReadout.lines.join('\n')}`)}
+            </pre>
+          </ChromeSection>
+        </aside>
+      ) : null}
+
       {showShift2 ? (
         <aside className="chrome-panel chrome-telemetry" aria-label="Process log">
           <ChromeSection
@@ -209,17 +254,19 @@ export default function AppChrome({
       <aside className="chrome-panel" aria-label="Parameters">
         <div className="chrome-panel-header">
           <h2>
-            {showShift2
-              ? 'Weathering v2'
-              : showShift
-                ? 'Weathering'
-                : showEp
-                  ? 'Playground'
-                  : showVoxels
-                    ? 'Voxels'
-                    : showShaders
-                      ? 'Shaders'
-                      : 'Terrain'}
+            {showShift3
+              ? 'Weathering v3'
+              : showShift2
+                ? 'Weathering v2'
+                : showShift
+                  ? 'Weathering'
+                  : showEp
+                    ? 'Playground'
+                    : showVoxels
+                      ? 'Voxels'
+                      : showShaders
+                        ? 'Shaders'
+                        : 'Terrain'}
           </h2>
         </div>
 
@@ -289,6 +336,15 @@ export default function AppChrome({
             onClick={() => onMode('shift2')}
           >
             Weathering v2
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={showShift3}
+            className={showShift3 ? 'is-active' : undefined}
+            onClick={() => onMode('shift3')}
+          >
+            Weathering v3
           </button>
         </div>
 
@@ -569,6 +625,25 @@ export default function AppChrome({
             onResetGrid={onResetV2Grid}
             onStep={onV2Step}
             census={v2Census}
+          />
+        ) : null}
+
+        {showShift3 ? (
+          <WeatheringV3Panel
+            params={v3Params}
+            terrain={v3Terrain}
+            voxel={v3Voxel}
+            firstPerson={firstPerson}
+            onChange={onV3Change}
+            onTerrainChange={onV3TerrainChange}
+            onVoxelChange={onV3VoxelChange}
+            onJumpIn={onJumpIn}
+            onExitFirstPerson={onExitFirstPerson}
+            onResetGrid={onResetV3Grid}
+            decay={v3DecayParams}
+            onDecayChange={onV3DecayChange}
+            onResetDecay={onResetV3Decay}
+            townDecay={v3TownDecay}
           />
         ) : null}
 
@@ -954,7 +1029,7 @@ export default function AppChrome({
               />
             </ChromeSection>
           </>
-        ) : showEp || showShift || showShift2 ? null : (
+        ) : showEp || showShift || showShift2 || showShift3 ? null : (
           <>
             <ChromeSection
               title="Noise"

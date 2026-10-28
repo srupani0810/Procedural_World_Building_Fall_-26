@@ -9,12 +9,14 @@ alwaysApply: true
 
 ## Before implementing
 
-Before any new feature, visual change, or system (Weathering, EP, buildings, lighting, atmosphere, growth, wear, water, scenery, camera, UI that frames those systems):
+Before any new feature, visual change, or system (Weathering, Weathering v2, **Weathering v3**, EP, buildings, lighting, atmosphere, growth, wear, water, scenery, camera, UI that frames those systems):
 
 1. **Read `decay.md` first.**
 2. Check the work against its **stance** (decay as abandonment under deindustrialization; leftover industrial shell as evidence of extraction and discard; legibility after use; time on the leftover; concurrent growth as relocating attention; lead with how decay happens).
 3. Check against its **method** (per-cell upkeep absence, not catastrophe; concurrent growth and decay; neighbor-rule architecture, not authored ruin set-pieces).
 4. If the change would read as ruins spectacle, decay-as-mood, empty “loss,” or disaster framing, **stop and ask** or redesign to the brief.
+
+**Weathering v3:** treat `decay.md` as the standing brief for every future addition to that tab specifically — absence of upkeep (not disaster); legible rule-driven process (not mood/randomness); growth and decay concurrent (not sequential). Keep `weatheringV3/` code fully independent of `weathering/` and `weatheringV2/`.
 
 ## Ask throughout
 

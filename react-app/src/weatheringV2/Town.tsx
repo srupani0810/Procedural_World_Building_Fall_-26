@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState, type MutableRefObject } fro
 import { DoubleSide, type Mesh } from 'three'
 import { buildShellGeometry, footprintHalf, STORY } from './buildShell.ts'
 import {
+  ORTHO,
   cellCentroid,
   cellKey,
   neighborFaces,
@@ -15,6 +16,12 @@ import {
 } from './grid.ts'
 import type { V2Params } from './params.ts'
 import { formatEvent, makeEvent, type ProcessEvent } from './processLog.ts'
+import {
+  DEMO_CLUSTER,
+  PROGRAM_LABEL,
+  formatProgramRule,
+  resolveProgram,
+} from './program.ts'
 import {
   impactMode,
   STAGE_COLOR,
@@ -48,6 +55,8 @@ export function Town({
   const mapRef = useRef(new Map<string, V2Cell>())
   const [revision, setRevision] = useState(0)
   const logRef = useRef<ProcessEvent[]>([])
+  /** Last logged program signature — re-log when massing or height changes the program. */
+  const programSigRef = useRef(new Map<string, string>())
   const growAcc = useRef(0)
   const paramsRef = useRef(params)
   paramsRef.current = params
@@ -61,7 +70,7 @@ export function Town({
   )
 
   const pushLog = (event: ProcessEvent) => {
-    logRef.current = [...logRef.current.slice(-48), event]
+    logRef.current = [...logRef.current.slice(-96), event]
     onLog(logRef.current.map(formatEvent))
   }
 
@@ -86,6 +95,20 @@ export function Town({
     )
   }
 
+  const logProgramAround = (ix: number, iz: number) => {
+    const targets = [{ ix, iz }, ...ORTHO.map(({ dix, diz }) => ({ ix: ix + dix, iz: iz + diz }))]
+    for (const { ix: tx, iz: tz } of targets) {
+      const cell = mapRef.current.get(cellKey(tx, tz))
+      if (!cell) continue
+      const key = cellKey(tx, tz)
+      const { massing, program } = resolveProgram(tx, tz, cell.height, mapRef.current)
+      const sig = `${program}|${massing}|${cell.height}`
+      if (programSigRef.current.get(key) === sig) continue
+      programSigRef.current.set(key, sig)
+      pushLog(makeEvent('rule', key, formatProgramRule(program, massing, cell.height)))
+    }
+  }
+
   const claim = (ix: number, iz: number, height: number, reason: string) => {
     const key = cellKey(ix, iz)
     const existing = mapRef.current.get(key)
@@ -105,6 +128,7 @@ export function Town({
             ),
           )
         }
+        logProgramAround(ix, iz)
         publish()
       }
       return
@@ -119,6 +143,8 @@ export function Town({
     }
     mapRef.current.set(key, cell)
     pushLog(makeEvent('claim', key, `${reason} · ${cell.height} stor${cell.height === 1 ? 'y' : 'ies'} · stage held`))
+    // Program first so it stays in the truncated process log during dense demo seeds.
+    logProgramAround(ix, iz)
     const size = paramsRef.current.cellSize
     const dens = occupiedNeighborCount(ix, iz, mapRef.current)
     const half = footprintHalf(ix, iz, size, mapRef.current)
@@ -146,15 +172,27 @@ export function Town({
       const nKey = cellKey(face.neighbor.ix, face.neighbor.iz)
       pushLog(makeEvent('rule', nKey, `${opposite(face.name)} now shared with ${key}`))
     }
+    // Neighbors may have changed massing when this lot filled in.
+    logProgramAround(ix, iz)
     publish()
   }
 
   useEffect(() => {
     mapRef.current = new Map()
     logRef.current = []
+    programSigRef.current = new Map()
     growAcc.current = 0
     pushLog(makeEvent('note', '—', 'grid reset · absence clock cleared'))
-    claim(0, 0, 2, 'seed claim')
+    pushLog(
+      makeEvent(
+        'note',
+        '—',
+        'demo cluster: mixed programs (pause Auto-grow to inspect)',
+      ),
+    )
+    for (const seed of DEMO_CLUSTER) {
+      claim(seed.ix, seed.iz, seed.height, seed.note)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gridReset])
 
@@ -252,9 +290,14 @@ const Shell = memo(function Shell({
 }) {
   const stage = vacateStage(cell.age, marks)
   const impact = impactMode(cell.age, marks)
+  const { massing, program } = useMemo(
+    () => resolveProgram(cell.ix, cell.iz, cell.height, map),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cell.ix, cell.iz, cell.height, revision],
+  )
   const geo = useMemo(
     () => buildShellGeometry(cell, map, stage, impact, cellSize),
-    // revision forces rebuild when neighbors/height/density change
+    // revision forces rebuild when neighbors/height/density/program change
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cell.ix, cell.iz, cell.height, stage, impact, cellSize, revision],
   )
@@ -293,10 +336,10 @@ const Shell = memo(function Shell({
           }}
         >
           <div style={{ color: STAGE_COLOR[stage], fontWeight: 600 }}>
-            {cell.ix},{cell.iz} · {stage}
+            {cell.ix},{cell.iz} · {PROGRAM_LABEL[program]}
           </div>
           <div>
-            {cell.age.toFixed(1)}s · {impactLabel(impact)} · h{cell.height}
+            {massing} · h{cell.height} · {impactLabel(impact)}
           </div>
         </div>
       </Html>
