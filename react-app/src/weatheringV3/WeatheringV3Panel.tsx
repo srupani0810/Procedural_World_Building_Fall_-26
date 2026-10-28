@@ -131,7 +131,7 @@ export function WeatheringV3Panel({
         <p className="chrome-hint">
           Orbit: light haze only at the field rim. Jump In: stronger endless horizon fog.
           Density thickens the walk fade. It stays the baseline; town decay adds haze on
-          top. In Phase 2, click empty lots to claim; shells are never cleared.
+          top. In Phase 2, claim empty lots (and stack your held lots); shells are never cleared.
         </p>
         <Slider
           label="Fog density"
@@ -255,9 +255,11 @@ export function WeatheringV3Panel({
         defaultOpen
       >
         <p className="chrome-hint">
-          Phase 1 is watch-only. In Phase 2, click an empty lot to claim it (starts held/new);
-          existing shells cannot be stacked, cleared, or restored. Autonomous growth claims
-          empty neighbors only. Reset Grid reseeds the intact city and returns to the intro.
+          Phase 1 is watch-only. In Phase 2, click an empty lot to claim it (starts held/new at
+          1 story); click that same lot again while it is still new/held to add stories up to
+          Max height. Seed and aged shells cannot be stacked, cleared, or restored. Autonomous
+          growth claims empty neighbors only. Reset Grid reseeds the intact city and returns to
+          the intro.
         </p>
         <Slider
           label="Cell size"

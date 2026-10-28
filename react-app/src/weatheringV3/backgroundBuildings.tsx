@@ -7,8 +7,8 @@ import { cellFailParams, createPlasterMaterial, createWearUniforms } from './shi
 
 const STORY = 1.05
 const BURY = 0.5
-const PAINT = new Color('#343a42')
-const PLASTER: [number, number, number] = [0.16, 0.17, 0.19]
+const PAINT = new Color('#6e3f34')
+const PLASTER: [number, number, number] = [0.43, 0.25, 0.2]
 
 const STAGE_WEAR: Record<Exclude<BackgroundStageBias, 'random'>, number> = {
   new: 0.15,
@@ -236,13 +236,15 @@ function pushBox(
   hx: number,
   hz: number,
 ) {
+  // aEdge must stay 0 on mass faces — non-zero + rust drips reads as wood-plank stripes.
+  // Metal marking is only for fail-bay hardware on claimed lots, not scenery boxes.
   const faces: Array<[number, number, number, number]> = [
-    [0, 0, 1, 0.9],
-    [0, 0, -1, 0.9],
-    [1, 0, 0, 0.9],
-    [-1, 0, 0, 0.9],
-    [0, 1, 0, 0.15],
-    [0, -1, 0, 0.2],
+    [0, 0, 1, 0],
+    [0, 0, -1, 0],
+    [1, 0, 0, 0],
+    [-1, 0, 0, 0],
+    [0, 1, 0, 0],
+    [0, -1, 0, 0],
   ]
   const corners: Array<[number, number, number]> = [
     [ox - hx, y0, oz - hz],
@@ -295,9 +297,10 @@ function columnGeometry(building: BackgroundBuilding) {
     const x = pos[i * 3]!
     const y = pos[i * 3 + 1]!
     const z = pos[i * 3 + 2]!
-    let n = (x * 0.37 + z * 0.23 + y * 0.11) % 1
-    if (n < 0) n += 1
-    noise[i] = n
+    const n =
+      Math.sin(x * 127.1 + z * 311.7 + y * 74.7) * 43758.5453 +
+      Math.sin(x * 269.5 + z * 183.3) * 23421.631
+    noise[i] = n - Math.floor(n)
   }
   geo.setAttribute('position', new Float32BufferAttribute(pos, 3))
   geo.setAttribute('normal', new Float32BufferAttribute(nrm, 3))

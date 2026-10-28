@@ -1144,7 +1144,7 @@ export default function WeatheringV3Scene({
           <div style={{ opacity: 0.85, marginTop: 4 }}>
             {phase === 'intro'
               ? 'Staggered vacating · shells persist · end = mixed stages'
-              : 'Continuous aging · claim empty lots only · no clear/restore'}
+              : 'Continuous aging · claim empty / stack while held · no clear/restore'}
           </div>
         </div>
       </Html>

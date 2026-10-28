@@ -92,18 +92,23 @@ float settled = smoothstep(0.2, 1.05, uWear) * intensity;
 float abandoned = smoothstep(1.05, 2.05, uWear) * intensity;
 float reclaim = smoothstep(2.15, 2.95, uWear) * intensity;
 
-// —— Shared concrete/plaster recipe: mottled chalk + soft stain — NOT board siding ——
-vec3 concrete = vec3(0.72, 0.71, 0.68);
-vec3 painted = mix(concrete, uPaint, 0.28);
-vec3 col = mix(painted, diffuseColor.rgb, 0.22);
-vec3 chalk = vec3(0.86, 0.84, 0.78);
+// —— Shell body: flat brown mill tone (swatch via uPaint) or rusted metal landmarks ——
 float face = 1.0 - vEdge;
-// Irregular blotches from aNoise — never a regular vertical period.
 float blotch = smoothstep(0.28, 0.82, vNoise);
-col = mix(col, mix(col, chalk, 0.7), settled * face * (0.22 + 0.45 * blotch));
-col = mix(col, col * vec3(0.8, 0.78, 0.74), abandoned * face * (0.15 + 0.28 * blotch));
+float metalShell = step(0.5, uShell);
+// No brick coursing for now — flat brown shade per cell swatch.
+vec3 millCol = mix(vec3(0.42, 0.26, 0.2), uPaint, 0.72);
+// Horizontal corrugation / plate ribs on metal landmarks (not vertical plank streaks).
+float plate = abs(fract(vLocal.y * 12.0) - 0.5);
+vec3 metalBody = mix(vec3(0.32, 0.26, 0.22), uPaint, 0.4);
+vec3 metalCol = mix(metalBody, metalBody * 0.72, smoothstep(0.32, 0.48, plate) * 0.45);
+vec3 baseCol = mix(millCol, metalCol, metalShell);
+vec3 col = mix(baseCol, diffuseColor.rgb, 0.12);
+vec3 chalk = vec3(0.78, 0.72, 0.66);
+col = mix(col, mix(col, chalk, 0.55), settled * face * (0.18 + 0.4 * blotch) * (1.0 - metalShell * 0.5));
+col = mix(col, col * vec3(0.78, 0.74, 0.7), abandoned * face * (0.14 + 0.25 * blotch));
 
-// Soft water stain at roof/sill bands + sparse blotches (no fract-stripe "planks").
+// Soft water stain at roof/sill bands + sparse blotches.
 float sillBand = smoothstep(0.32, 0.4, vRelY) * (1.0 - smoothstep(0.42, 0.5, vRelY));
 float roofRun = smoothstep(0.78, 0.95, vRelY);
 float stain = (roofRun * 0.55 + sillBand * 0.7 + blotch * 0.28)
@@ -111,16 +116,17 @@ float stain = (roofRun * 0.55 + sillBand * 0.7 + blotch * 0.28)
 vec3 stainCol = vec3(0.42, 0.38, 0.32);
 col = mix(col, col * stainCol, clamp(stain * 0.4, 0.0, 0.55));
 
-// Rust on metal edges only; rare drips require strong aEdge (lintel/rail), not whole faces.
+// Rust: metal edges always; landmark shells also take surface rust.
 float rustAmt = smoothstep(0.85, 2.0, uWear) * intensity;
 vec3 rustCol = vec3(0.52, 0.22, 0.08);
-float rustPatch = smoothstep(0.55, 0.95, fract(vNoise * 9.0 + vLocal.y * 0.7));
-col = mix(col, rustCol, rustAmt * vEdge * (0.55 + 0.4 * rustPatch));
-float dripPath = fract(vNoise * 6.3 + vLocal.y * 0.15);
-float drip = smoothstep(0.12, 0.0, abs(dripPath - 0.5))
+float rustPatch = smoothstep(0.55, 0.95, vNoise);
+float rustMask = max(vEdge, metalShell * 0.55);
+col = mix(col, rustCol, rustAmt * rustMask * (0.5 + 0.35 * rustPatch));
+float dripSeed = fract(vNoise * 17.0 + vLocal.x * 0.03 + vLocal.z * 0.05);
+float drip = step(0.92, dripSeed)
   * smoothstep(0.92, 0.45, vRelY)
-  * vEdge;
-col = mix(col, rustCol * 0.88, rustAmt * drip * 0.35);
+  * max(vEdge, metalShell * 0.35);
+col = mix(col, rustCol * 0.88, rustAmt * drip * 0.4);
 
 // —— One missing cladding panel (single bay × ground story). Caps early in
 // reclaim; does not grow with more age or wearIntensity; no noise shredding.
@@ -150,6 +156,8 @@ export type WearUniforms = {
   uWearIntensity: { value: number }
   uFail: { value: Vector3 }
   uOrigin: { value: Vector3 }
+  /** 0 = brick mill shell, 1 = rusted metal landmark. */
+  uShell: { value: number }
 }
 
 /**
@@ -177,6 +185,7 @@ export function createWearUniforms(
   failSide = 0,
   roofSeed = 0.5,
   windowSeed = 0.5,
+  shellKind = 0,
 ): WearUniforms {
   return {
     uWear: { value: 0 },
@@ -187,6 +196,7 @@ export function createWearUniforms(
     uWearIntensity: { value: 1 },
     uFail: { value: new Vector3(failSide, roofSeed, windowSeed) },
     uOrigin: { value: new Vector3(originX, baseY, originZ) },
+    uShell: { value: shellKind },
   }
 }
 
@@ -200,6 +210,7 @@ function bindWear(material: MeshStandardMaterial | ShaderMaterial, wear: WearUni
     shader.uniforms.uWearIntensity = wear.uWearIntensity
     shader.uniforms.uFail = wear.uFail
     shader.uniforms.uOrigin = wear.uOrigin
+    shader.uniforms.uShell = wear.uShell
     const vertexChunk = fragment ? WEAR_VERTEX_PLASTER : WEAR_VERTEX_TARP
     shader.vertexShader = WEAR_VARYING + shader.vertexShader.replace('#include <begin_vertex>', vertexChunk)
     if (fragment) {
@@ -214,6 +225,7 @@ function bindWear(material: MeshStandardMaterial | ShaderMaterial, wear: WearUni
           varying float vPanelMask;
           uniform float uWear;
           uniform float uWearIntensity;
+          uniform float uShell;
           uniform vec3 uPaint;
           uniform vec3 uGround;
           uniform vec3 uFail;
@@ -221,7 +233,7 @@ function bindWear(material: MeshStandardMaterial | ShaderMaterial, wear: WearUni
     }
   }
   material.customProgramCacheKey = () =>
-    fragment ? 'weathering-v3-plaster-wear-v7' : 'weathering-v3-tarp-wear-v7'
+    fragment ? 'weathering-v3-plaster-wear-v9' : 'weathering-v3-tarp-wear-v9'
   material.needsUpdate = true
 }
 

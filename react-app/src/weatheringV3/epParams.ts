@@ -26,7 +26,7 @@ export type EpParams = {
   autoGrow: boolean
   /** Seconds between autonomous claims. */
   autoGrowSeconds: number
-  /** Tallest column a click can stack on one lot. */
+  /** Tallest column a player click can stack on one held lot. */
   maxStories: number
   /** How many background columns are scattered around the camera. */
   backgroundDensity: number

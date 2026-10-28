@@ -53,7 +53,9 @@ So across a town at one moment, lots look like a **mix** (different times since 
 
 **Working implication until sources are locked:** prefer paint/rust and failed enclosure cues earlier in the stage sequence; introduce partial geometric collapse later and sparsely; never total wipe. Revisable when the author settles a research canon.
 
-**Weathering v3 visual rule (settled):** never dissolve solid wall mass into a wireframe/lattice or wash the shell into terrain. Mass stays mass — upper stories stay square/plumb; wear is surface (paint loss, staining) and metal rust streaks, not warped masonry. Settled/abandoned lead with water-driven staining, paint chalking, and rust dripping from metal edges; reclaimed adds *localized* failure (sagging lintel / diagonal brace on one bay, cladding void, broken panes) plus sparse base scrap/debris — shell never erased.
+**Weathering v3 visual rule (settled):** never dissolve solid wall mass into a wireframe/lattice or wash the shell into terrain. Mass stays mass — upper stories stay square/plumb; wear is surface (paint loss, staining) and metal rust streaks, not warped masonry. Settled/abandoned lead with water-driven staining, paint chalking, and rust dripping from metal edges; reclaimed adds *localized* failure (cladding void, broken panes on the fail bay; diagonal strut/lintel line geometry paused for now) plus sparse base scrap/debris — shell never erased.
+
+**Weathering v3 settlement type mix (settled from references):** bulk stock reads as **wide 2–5 story mill / plant shells** in brown swatch tones (not neon). **Temporary wall material:** flat brown shades by cell swatch + existing wear (mottle / stain / rust) — brick coursing/mortar pattern paused for now. Height range stays gentle: at most **one or two** shells sit **one story above** that mill band as a distinct **metal landmark** type (slightly narrower footprint, rusted plate/corrugation, short smokestack or silo cap — not sci-fi antennas, not a single skyline-dominating tower). Exterior fire-escape silhouette geometry is **paused** for now (was reading as stray diagonal lines on facades).
 
 **Concurrent growth** belongs in the same economy: capital and attention relocating. Some lots keep being claimed and stacked while others age into shells. That uneven field supports the leftover-shell claim — discard is selective; care moves elsewhere. In argument and in design emphasis, **lead with how decay unfolds on the abandoned cell**, then widen to growth relocating beside it. Do not open on bustling new construction and treat shells as backdrop.
 
@@ -94,7 +96,7 @@ Nothing in the decay clock is a catastrophe trigger. Stages advance because care
 
 The town can still claim new empty lots while other cells abandon and reclaim. That is capital/attention relocating — not a single end-state of ruin. Design should keep both readable, with **decay’s sequence primary** in how the concept is taught and how new systems are framed.
 
-**Player agency (settled for Weathering v3):** the player may **only claim empty lots**. Existing shells cannot be cleared, demolished, restored, stacked further, or otherwise intervened on. A new claim starts held (stage new) and enters the same gradual, staggered vacating as everything else. Growth is adding automation-era structure into an already unevenly decaying field — not repairing or erasing leftovers.
+**Player agency (settled for Weathering v3):** the player may **claim empty lots** and, while a **player-owned** lot is still **new/held**, click it again to **add one story** at a time up to the panel `maxStories`. Seed and auto-growth shells cannot be stacked, cleared, demolished, restored, or otherwise intervened on — nor can a player lot once it has left the held/new stage. A new claim starts at 1 story, held (stage new), and enters the same gradual, staggered vacating as everything else. Growth is add-only into an already unevenly decaying field — not repairing or erasing leftovers.
 
 ### Uneven vacating, not a synchronized ruin clock
 
@@ -157,7 +159,7 @@ Candidates to discuss before locking (examples only, not yet canon):
 - Whether the mixed infrastructure reference later needs a **primary** type for clarity, or stays deliberately plural
 - Concrete referent sites or images the author wants treated as working references (ask; do not invent a canon)
 - How current “reclaimed” visuals (ground tint, sag) should change if they still read as erasure rather than impacted presence
-- Whether any future system should count as **upkeep** that interrupts gradual vacating (v3 settles: player only witnesses existing shells and may claim empty lots)
+- Whether any future system should count as **upkeep** that interrupts gradual vacating (v3 settles: player claims empty lots and may stack stories on their own held/new lots only)
 - Which industries or building types that future leaves behind as shells
 - Author-approved research canon for impact *process* (past vacancy physics as evidence; automation literature as driver)
 - Whether strip-out / vandalism after vacancy belongs in the system or stays outside scope
@@ -173,6 +175,15 @@ Drop sources here as they’re found — games, articles, photography, case stud
 - ![[3500.jpeg]]
 - ![[9206a17d606ec96a13353bfeead5dedf.jpg]]
 - ![[95fe3643e9d2e8e534484560e3ff62bb.jpg]]
+
+![[d1ca44801518678b1aa256672a419c79.jpg]]
+
+![[598f9d4a9847ac373ec0245445a04a0b.jpg]]
+
+![[refs-industrial-mix-board.jpg]]
+(board: brick mills + rusted silo/stack + zigzag fire escape + alley corridors; also graffiti / containers / gantries — not yet locked as features)
+
+
 
 ---
 

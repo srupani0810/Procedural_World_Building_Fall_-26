@@ -60,14 +60,14 @@ export function formatPhaseLabel(phase: TownPhase, timelineT: number) {
   if (phase === 'intro') {
     return `Phase 1 — Timeline intro · ${timelineT.toFixed(1)}s / ${INTRO_DURATION}s`
   }
-  return 'Phase 2 — Continuous · claim empty lots only'
+  return 'Phase 2 — Continuous · claim empty lots · stack while held'
 }
 
 export function formatPhaseHint(phase: TownPhase) {
   if (phase === 'intro') {
     return 'Watch uneven vacating under staggered automation adoption. Scrub or play — end state is a mix of stages, never total wipe.'
   }
-  return 'Ongoing absence clocks. Existing shells cannot be cleared or restored — only new empty lots can be claimed (start held/new).'
+  return 'Ongoing absence clocks. Claim empty lots; click your held/new lots again to add stories. Seed shells cannot be cleared, restored, or stacked.'
 }
 
 /**

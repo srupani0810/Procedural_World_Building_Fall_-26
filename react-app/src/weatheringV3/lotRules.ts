@@ -252,16 +252,40 @@ export function listSeedVacancies(rad = SEED_CITY_RADIUS) {
   return [...seedStreetPlan(rad).values()].sort((a, b) => a.localeCompare(b))
 }
 
+/** Bulk mill ceiling (wide 2–5 story band). Panel maxStories only caps this. */
+export function millTopStories(maxStories: number) {
+  const cap = Math.max(2, Math.min(8, Math.floor(maxStories)))
+  return Math.min(5, cap)
+}
+
 /**
- * Taller toward the town center (density / core), shorter at the rim.
- * Viewer can read: center stacks higher than the edge.
+ * Mild accent above mills — one story over mill top, never the full panel max.
+ * Keeps skyline gentle instead of a single dominating tower.
+ */
+export function accentStories(maxStories: number) {
+  const cap = Math.max(2, Math.min(8, Math.floor(maxStories)))
+  return Math.min(cap, millTopStories(maxStories) + 1)
+}
+
+/**
+ * Bulk settlement = wide 2–5 story mills by rim distance.
+ * At most two mild accents (origin + east neighbor) sit one story above mills —
+ * not a core disk of maxStories spikes.
  */
 export function heightFromCenterDistance(ix: number, iz: number, maxStories: number) {
-  const cap = Math.max(2, Math.min(8, Math.floor(maxStories)))
+  const millTop = millTopStories(maxStories)
+  const accent = accentStories(maxStories)
+  if ((ix === 0 && iz === 0) || (ix === 1 && iz === 0)) return accent
   const r = Math.sqrt(ix * ix + iz * iz)
   const t = Math.max(0, 1 - r / Math.max(1, SEED_CITY_RADIUS))
-  const span = Math.max(1, Math.min(5, cap - 1))
+  const span = Math.max(0, millTop - 2)
   return 2 + Math.floor(t * span)
+}
+
+/** Mild accent shells — metal landmark type, not brick mills. */
+export function isLandmarkLot(ix: number, iz: number, height: number, maxStories: number) {
+  if (height < accentStories(maxStories)) return false
+  return (ix === 0 && iz === 0) || (ix === 1 && iz === 0)
 }
 
 /**
@@ -484,14 +508,17 @@ export function tiltFromFailSide(failSide: number, amount = 0.22) {
 export function describeLotMassing(
   cell: GridCell,
   neighbors: CardinalNeighbors,
+  maxStories = 8,
 ) {
   const open = openSidesAtLot(neighbors)
   const openCount = countTrue(open)
   const kind = roofKindFromOpenCount(openCount)
   const openNames = SIDE_NAMES.filter((_, i) => open[i]).join('+') || 'none'
   const tarp = tarpPlan(cell.height, open)
+  const landmark = isLandmarkLot(cell.ix, cell.iz, cell.height, maxStories)
   return [
     `${cell.height} stories`,
+    landmark ? 'metal landmark (mild accent)' : 'brick mill',
     describeRoof(kind, openCount),
     `open ${openNames}`,
     tarp.reason,

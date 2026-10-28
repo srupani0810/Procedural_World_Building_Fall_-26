@@ -97,6 +97,11 @@ export type GridCell = {
    * Defaults to 1 when omitted (legacy / unset).
    */
   vacateRate?: number
+  /**
+   * True when the player claimed this lot (Phase 2 click). Seed / auto-growth omit it.
+   * Player may stack stories only on these cells while stage is still new/held.
+   */
+  playerOwned?: boolean
 }
 
 export type XZ = [number, number]
