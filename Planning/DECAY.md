@@ -140,7 +140,19 @@ Candidates to discuss before locking (examples only, not yet canon):
 
 New app mode **DECAY** (`react-app/src/decay/`) — **no shared settlement code with Weathering / v2 / v3**.
 
-**Current slice:** empty **noise heightfield terrain** only (same FastNoise / streamed-plane approach as Weathering; independent terrain state). No seed city, claims, auto-grow, cells, or process log yet — settlement returns **incrementally** on this field.
+**Current slice:** noise heightfield (fixed **520×520** square, not endless) + an **editable road graph** clipped to that field. Tilted lattices generate oversized then cut at the square so there are no empty corners; edge roads terminate on boundary nodes so edge plots close. Sliders replace the graph from scratch.
+
+**City morphology:** rule-based road tiers (main / collector / local by lattice stride + thickness), sidewalks, front/side/back setbacks + building line, corner radius at junctions, block size/shape with oversized splits, plot frontage/depth facing roads, corner-plot tags, optional back lanes, open plots picked by steepest/largest rule. Morphology slider changes rebuild plots and log to the process log without faking settlement stages.
+
+**Building layer (SimCity stack):** plain instanced boxes on every non-open plot (steep included). Height / Size / Slope are editable grid fields (deterministic noise + paint, heat map). Footprint sits inside the building line and faces the road edge; stories from Height, fill from Size. Floor from corner/center terrain samples (lowest / average / highest); dark foundation down to terrain; optional terrace steps; continuous steep-shrink (no hard skip). Hover label via grid lookup, throttled — never blocks camera. No windows or Math.random yet.
+
+**Materiality (texture leads; geometry late):** shared wear shader on instances (material id + wear as instance attrs). Materials: brick / concrete / plaster / corrugated metal / mixed (readable height or distance rule). Muted tone swatches. Surface layers (grime, rain streaks, rust, chalk, salt on brick, moss) are procedural from world/local position — **no bitmaps, no UVs**; wear never moves vertices. Wear scrub 0–3 or distance-from-center (edges first) as stand-in until real stages. Geometry: one missing panel (shaded void), base debris, one tarp — high wear only, capped, one side max. Broken windows listed N/A. Panel preview shows wear 0/1/2/3; process log records material / wear mode / layer toggles.
+
+**Chrome (visual pass):** DECAY shell uses Space Mono, black / red / bone, and stage legend colors (new bone, settled amber, abandoned rust, reclaimed moss; amber inhabited dot). Screens: entry, Phase 1 timeline, Phase 2 claim shell, road graph editor.
+
+**Phase 1 timeline (settled for DECAY):** intro clock 0–48s (Play / Pause / Rewind / scrub; Skip → Phase 2 at end). Each building has stage new → settled → abandoned → reclaimed from age vs Absence Clock thresholds (decay speed + stage ages, same shape as Weathering v3 defaults 8 / 20 / 40). Onset is rule-based — rim, steep, and small plots vacate earlier; core lasts longest; rank spreads delays so flips are staggered. Buildings tint by stage legend color (color only). Dock chart + legend show live stage counts; hover shows stage/age; process log `[stage]` lines record each flip with plot id, old→new, and onset rule. No Math.random.
+
+**Phase 2 claim (settled for DECAY, in progress):** click an **empty open morphology plot** (no seed building) to claim it — add-only, nothing cleared or restored. Claim starts at **1 story**, stage **new** (age zero at claim time). Hover on empty open lots shows **claimable**. Seed vacate profiles stay frozen so Phase 1 end state does not reshuffle when claims are added. Stack / tone swatches / town-decay % / lots-by-stage dock / claim RULE log lines still to wire.
 
 Open items in *Still open* still apply (precedents, primary typology, strip-out, etc.).
 

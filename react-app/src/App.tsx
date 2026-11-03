@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import AppChrome from './AppChrome.tsx'
 import HeightMapView from './HeightMapView.tsx'
 import NoiseMap from './NoiseMap.tsx'
@@ -12,8 +12,38 @@ import WeatheringV3Scene from './weatheringV3/WeatheringV3Scene.tsx'
 import type { TownPhase } from './weatheringV3/timeline.ts'
 import { INTRO_DURATION } from './weatheringV3/timeline.ts'
 import DecayScene from './decay/DecayScene.tsx'
-import { createDefaultDecayTerrain, defaultDecayView } from './decay/params.ts'
-import type { DecayViewParams } from './decay/params.ts'
+import { DecayShell } from './decay/DecayShell.tsx'
+import type { BuildingHoverInfo } from './decay/buildings.ts'
+import type { PlayerClaim } from './decay/claims.ts'
+import { createDefaultFieldMaps, resetField, type FieldMaps } from './decay/fields.ts'
+import {
+  createDefaultMateriality,
+  type MaterialityParams,
+} from './decay/materiality.ts'
+import {
+  defaultAbsenceClock,
+  emptyStageCounts,
+  INTRO_DURATION as DECAY_INTRO_DURATION,
+  INTRO_PLAY_SPEED as DECAY_INTRO_PLAY_SPEED,
+  type AbsenceClockParams,
+  type StageCounts,
+} from './decay/timeline.ts'
+import {
+  createDefaultDecayTerrain,
+  defaultBuildingParams,
+  defaultDecayView,
+  defaultRoadNetwork,
+  emptyRoadCensus,
+} from './decay/params.ts'
+import type {
+  BuildingParams,
+  DecayScreen,
+  DecaySelection,
+  DecayViewParams,
+  DecayViewTab,
+  RoadCensus,
+  RoadNetworkParams,
+} from './decay/params.ts'
 import { defaultV2Params } from './weatheringV2/params.ts'
 import type { V2Params } from './weatheringV2/params.ts'
 import { createDefaultV2Terrain, createDefaultV2Voxel } from './weatheringV2/worldDefaults.ts'
@@ -106,9 +136,93 @@ function App() {
   const [v3Phase, setV3Phase] = useState<TownPhase>('intro')
   const [v3TimelineT, setV3TimelineT] = useState(0)
   const [v3TimelinePlaying, setV3TimelinePlaying] = useState(false)
-  /** DECAY tab — greenfield; terrain only for now (not shared with Weathering / v2 / v3). */
+  /** DECAY tab — greenfield; terrain + fields + buildings (not shared with Weathering / v2 / v3). */
   const [decayTerrain, setDecayTerrain] = useState<TerrainParams>(() => createDefaultDecayTerrain())
   const [decayView, setDecayView] = useState<DecayViewParams>(defaultDecayView)
+  const [decayRoads, setDecayRoads] = useState<RoadNetworkParams>(defaultRoadNetwork)
+  const [decayBuildings, setDecayBuildings] = useState<BuildingParams>(defaultBuildingParams)
+  const [decayMateriality, setDecayMateriality] = useState<MaterialityParams>(() =>
+    createDefaultMateriality(),
+  )
+  const [decayFields, setDecayFields] = useState<FieldMaps>(() =>
+    createDefaultFieldMaps(createDefaultDecayTerrain()),
+  )
+  const [decayFieldRevision, setDecayFieldRevision] = useState(0)
+  const [decayRoadLog, setDecayRoadLog] = useState<string[]>([])
+  const [decayTimelineT, setDecayTimelineT] = useState(0)
+  const [decayTimelinePlaying, setDecayTimelinePlaying] = useState(false)
+  const [decayAbsenceClock, setDecayAbsenceClock] =
+    useState<AbsenceClockParams>(defaultAbsenceClock)
+  const [decayStageCounts, setDecayStageCounts] = useState<StageCounts>(emptyStageCounts)
+  const [decayStageSeries, setDecayStageSeries] = useState<
+    { t: number; counts: StageCounts }[]
+  >([])
+  const [decayClaims, setDecayClaims] = useState<PlayerClaim[]>([])
+  const decayTimelineTRef = useRef(0)
+  decayTimelineTRef.current = decayTimelineT
+  const appendDecayLog = useCallback((lines: string[]) => {
+    setDecayRoadLog((prev) => {
+      const next = [...prev, ...lines]
+      return next.length > 400 ? next.slice(next.length - 400) : next
+    })
+  }, [])
+  const onDecayClaim = useCallback((plotId: number) => {
+    setDecayClaims((prev) => {
+      if (prev.some((c) => c.plotId === plotId)) return prev
+      return [
+        ...prev,
+        { plotId, stories: 1, claimTime: decayTimelineTRef.current },
+      ]
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!decayTimelinePlaying || mode !== 'decay') return
+    let raf = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      setDecayTimelineT((t) => {
+        const next = Math.min(DECAY_INTRO_DURATION, t + dt * DECAY_INTRO_PLAY_SPEED)
+        if (next >= DECAY_INTRO_DURATION) setDecayTimelinePlaying(false)
+        return next
+      })
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [decayTimelinePlaying, mode])
+  const [decayCensus, setDecayCensus] = useState<RoadCensus>(emptyRoadCensus)
+  const [decayGraphReset, setDecayGraphReset] = useState(0)
+  const [decayScreen, setDecayScreen] = useState<DecayScreen>('entry')
+  const [decayViewTab, setDecayViewTab] = useState<DecayViewTab>('3d')
+  const [decaySelection, setDecaySelection] = useState<DecaySelection>({
+    draggingId: null,
+    selectedId: null,
+  })
+  const [decayBuildingHover, setDecayBuildingHover] = useState<{
+    info: BuildingHoverInfo | null
+    sx: number
+    sy: number
+  }>({ info: null, sx: 0, sy: 0 })
+  const onDecayBuildingHover = useCallback(
+    (info: BuildingHoverInfo | null, sx: number, sy: number) => {
+      setDecayBuildingHover((prev) => {
+        if (
+          prev.info?.plotId === info?.plotId &&
+          prev.info == null &&
+          info == null &&
+          Math.abs(prev.sx - sx) < 1 &&
+          Math.abs(prev.sy - sy) < 1
+        ) {
+          return prev
+        }
+        return { info, sx, sy }
+      })
+    },
+    [],
+  )
   const [heightGradient, setHeightGradient] = useState<GradientStop[]>(() =>
     defaultHeightGradient.map((stop) => ({ ...stop })),
   )
@@ -242,7 +356,30 @@ function App() {
             onTimelinePlaying={setV3TimelinePlaying}
           />
         ) : mode === 'decay' ? (
-          <DecayScene terrain={decayTerrain} view={decayView} />
+          <DecayScene
+            terrain={decayTerrain}
+            view={decayView}
+            roads={decayRoads}
+            graphReset={decayGraphReset}
+            fields={decayFields}
+            fieldRevision={decayFieldRevision}
+            buildings={decayBuildings}
+            materiality={decayMateriality}
+            timelineT={decayTimelineT}
+            absenceClock={decayAbsenceClock}
+            stageTint={decayScreen === 'phase1' || decayScreen === 'phase2'}
+            onRoadLog={setDecayRoadLog}
+            onCensus={setDecayCensus}
+            onSelection={setDecaySelection}
+            onFieldsPainted={() => setDecayFieldRevision((n) => n + 1)}
+            onBuildingHover={onDecayBuildingHover}
+            onAppendLog={appendDecayLog}
+            onStageCensus={setDecayStageCounts}
+            onStageSeries={setDecayStageSeries}
+            claims={decayClaims}
+            claimEnabled={decayScreen === 'phase2'}
+            onClaim={onDecayClaim}
+          />
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -257,6 +394,49 @@ function App() {
           <NoiseMap params={params} resolution={256} className="noise-view" />
         )}
       </div>
+      {mode === 'decay' ? (
+        <DecayShell
+          screen={decayScreen}
+          onScreen={setDecayScreen}
+          viewTab={decayViewTab}
+          onViewTab={setDecayViewTab}
+          roads={decayRoads}
+          view={decayView}
+          buildings={decayBuildings}
+          materiality={decayMateriality}
+          census={decayCensus}
+          roadLog={decayRoadLog}
+          selection={decaySelection}
+          buildingHover={decayBuildingHover}
+          timelineT={decayTimelineT}
+          timelinePlaying={decayTimelinePlaying}
+          absenceClock={decayAbsenceClock}
+          stageCounts={decayStageCounts}
+          stageSeries={decayStageSeries}
+          onRoads={(patch) => setDecayRoads((c) => ({ ...c, ...patch }))}
+          onView={(patch) => setDecayView((c) => ({ ...c, ...patch }))}
+          onBuildings={(patch) => setDecayBuildings((c) => ({ ...c, ...patch }))}
+          onMateriality={(patch) => setDecayMateriality((c) => ({ ...c, ...patch }))}
+          onMaterialityReplace={setDecayMateriality}
+          onAppendLog={appendDecayLog}
+          onTimelineT={setDecayTimelineT}
+          onTimelinePlaying={setDecayTimelinePlaying}
+          onAbsenceClock={(patch) => setDecayAbsenceClock((c) => ({ ...c, ...patch }))}
+          onResetField={(kind) => {
+            setDecayFields((maps) => resetField(maps, kind, decayTerrain))
+            setDecayFieldRevision((n) => n + 1)
+          }}
+          onResetGraph={() => {
+            setDecayClaims([])
+            setDecayGraphReset((n) => n + 1)
+          }}
+          onLeaveApp={() => {
+            setDecayScreen('entry')
+            handleMode('3d')
+          }}
+        />
+      ) : null}
+      {mode === 'decay' ? null : (
       <AppChrome
         mode={mode}
         twoDTab={twoDTab}
@@ -366,6 +546,11 @@ function App() {
         onResetDecayTerrain={() => setDecayTerrain(createDefaultDecayTerrain())}
         decayView={decayView}
         onDecayView={(patch) => setDecayView((c) => ({ ...c, ...patch }))}
+        decayRoads={decayRoads}
+        onDecayRoads={(patch) => setDecayRoads((c) => ({ ...c, ...patch }))}
+        onResetDecayGraph={() => setDecayGraphReset((n) => n + 1)}
+        decayRoadLog={decayRoadLog}
+        decayCensus={decayCensus}
         firstPerson={
           mode === 'ep'
             ? epFirstPerson
@@ -398,6 +583,7 @@ function App() {
           resetMap()
         }}
       />
+      )}
     </div>
   )
 }

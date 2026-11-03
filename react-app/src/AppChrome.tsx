@@ -31,7 +31,7 @@ import type {
 } from './weatheringV3/epParams.ts'
 import type { TownPhase as V3TownPhase } from './weatheringV3/timeline.ts'
 import { DecayPanel } from './decay/DecayPanel.tsx'
-import type { DecayViewParams } from './decay/params.ts'
+import type { DecayViewParams, RoadCensus, RoadNetworkParams } from './decay/params.ts'
 
 type AppChromeProps = {
   mode: ViewMode
@@ -105,6 +105,11 @@ type AppChromeProps = {
   onResetDecayTerrain: () => void
   decayView: DecayViewParams
   onDecayView: (patch: Partial<DecayViewParams>) => void
+  decayRoads: RoadNetworkParams
+  onDecayRoads: (patch: Partial<RoadNetworkParams>) => void
+  onResetDecayGraph: () => void
+  decayRoadLog: string[]
+  decayCensus: RoadCensus
   firstPerson: boolean
   onJumpIn: () => void
   onExitFirstPerson: () => void
@@ -209,6 +214,11 @@ export default function AppChrome({
   onResetDecayTerrain,
   decayView,
   onDecayView,
+  decayRoads,
+  onDecayRoads,
+  onResetDecayGraph,
+  decayRoadLog,
+  decayCensus,
   firstPerson,
   onJumpIn,
   onExitFirstPerson,
@@ -279,6 +289,22 @@ export default function AppChrome({
           >
             <pre className="chrome-telemetry-readout">
               {v2Log.length === 0 ? 'log — waiting for generation' : v2Log.join('\n')}
+            </pre>
+          </ChromeSection>
+        </aside>
+      ) : null}
+
+      {showDecay ? (
+        <aside className="chrome-panel chrome-telemetry" aria-label="Process log">
+          <ChromeSection
+            title="Process log"
+            tip="Each node, road, and plot created, moved, or deleted."
+            defaultOpen
+          >
+            <pre className="chrome-telemetry-readout">
+              {decayRoadLog.length === 0
+                ? 'log — waiting for roads'
+                : colorTelemetryStages(decayRoadLog.join('\n'))}
             </pre>
           </ChromeSection>
         </aside>
@@ -676,9 +702,13 @@ export default function AppChrome({
           <DecayPanel
             terrain={decayTerrain}
             view={decayView}
+            roads={decayRoads}
             onTerrain={onDecayTerrain}
             onView={onDecayView}
+            onRoads={onDecayRoads}
             onResetTerrain={onResetDecayTerrain}
+            onResetGraph={onResetDecayGraph}
+            census={decayCensus}
           />
         ) : null}
 

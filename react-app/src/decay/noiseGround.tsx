@@ -19,9 +19,7 @@ import {
   type Mesh,
 } from 'three'
 import { createNoise, terrainAmplitude, type TerrainParams } from '../terrainParams.ts'
-import { DECAY_FOG } from './params.ts'
-
-const OVERVIEW_GROUND_SIZE = 520
+import { DECAY_FIELD_SIZE, DECAY_FOG } from './params.ts'
 
 const GROUND_VERT = /* glsl */ `
 attribute vec3 color;
@@ -132,7 +130,7 @@ export function StreamedNoiseGround({
   const genKey = `${terrain.noiseId}|${terrain.frequency}|${terrain.amplitude}|${terrain.octaves}|${terrain.persistence}|${segments}|${heightScale}|${fogDensity}`
 
   const remesh = (ox: number, oz: number) => {
-    const size = OVERVIEW_GROUND_SIZE
+    const size = DECAY_FIELD_SIZE
     const segs = Math.max(48, Math.round(size / 2.7))
     const next = buildFollowGroundGeometry(ox, oz, size, sample, heightScale, segs)
     geoRef.current?.dispose()
@@ -235,8 +233,8 @@ export function DecayFog({ density }: { density: number }) {
     const d = Math.max(0.01, densityRef.current)
     const dist = Math.hypot(camera.position.x, camera.position.y, camera.position.z)
     const thicken = Math.min(1, Math.max(0, (d - 0.02) / 0.12))
-    fog.near = Math.max(12, dist * 0.85 * (1 - thicken * 0.4))
-    fog.far = Math.max(fog.near + 24, OVERVIEW_GROUND_SIZE * 0.42 * (1 - thicken * 0.35))
+    fog.near = Math.max(20, dist * (0.35 - thicken * 0.1))
+    fog.far = Math.max(fog.near + 200, dist + DECAY_FIELD_SIZE * (0.75 - thicken * 0.15))
   })
 
   return null

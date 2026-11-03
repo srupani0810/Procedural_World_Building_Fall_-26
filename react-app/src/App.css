@@ -257,6 +257,18 @@
   margin-top: 8px;
 }
 
+.chrome-road-tools {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.chrome-road-tools button {
+  letter-spacing: 0.08em;
+  font-size: 8px;
+  text-transform: uppercase;
+  height: 26px;
+}
+
 .chrome-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
