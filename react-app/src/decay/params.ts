@@ -198,7 +198,8 @@ export const defaultRoadNetwork: RoadNetworkParams = {
   plotFrontage: 8,
   plotDepth: 10,
   backLanes: false,
-  openPlotShare: 0.08,
+  /** Parks track this share (land-use target band ~6–8%). */
+  openPlotShare: 0.07,
   mainEvery: 4,
   collectorEvery: 2,
 }
@@ -216,6 +217,13 @@ export type RoadCensus = {
   roadShare: number
   sidewalkShare: number
   plotShare: number
+  landIndustry: number
+  landCommerce: number
+  landHousing: number
+  landCivic: number
+  landPark: number
+  landFarm: number
+  landYard: number
 }
 
 export const emptyRoadCensus: RoadCensus = {
@@ -231,6 +239,13 @@ export const emptyRoadCensus: RoadCensus = {
   roadShare: 0,
   sidewalkShare: 0,
   plotShare: 0,
+  landIndustry: 0,
+  landCommerce: 0,
+  landHousing: 0,
+  landCivic: 0,
+  landPark: 0,
+  landFarm: 0,
+  landYard: 0,
 }
 
 export type DecaySelection = {

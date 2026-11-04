@@ -10,6 +10,7 @@ import {
   Vector2,
   type IUniform,
 } from 'three'
+import { LAND_USE_COLORS, type LandUseViewMode } from './landUse.ts'
 import {
   assignMixedMaterial,
   materialId,
@@ -26,11 +27,19 @@ export type WearUniformBag = {
   uTonePlaster: IUniform
   uToneMetal: IUniform
   uGeoGate: IUniform // Vector2: x = panel gate wear
-  uStageTint: IUniform
+  /** 0 = land use, 1 = stage, 2 = both (type shape + light stage). */
+  uTintMode: IUniform
   uStageNew: IUniform
   uStageSettled: IUniform
   uStageAbandoned: IUniform
   uStageReclaimed: IUniform
+  uLandIndustry: IUniform
+  uLandCommerce: IUniform
+  uLandHousing: IUniform
+  uLandCivic: IUniform
+  uLandPark: IUniform
+  uLandFarm: IUniform
+  uLandYard: IUniform
 }
 
 const ATTR_BLOCK = /* glsl */ `
@@ -39,11 +48,13 @@ attribute float aWear;
 attribute float aFailSide;
 attribute float aSeed;
 attribute float aStage;
+attribute float aLandUse;
 varying float vMatId;
 varying float vWear;
 varying float vFailSide;
 varying float vSeed;
 varying float vStage;
+varying float vLandUse;
 varying vec3 vLocal;
 varying vec3 vWorld;
 `
@@ -55,6 +66,7 @@ vWear = aWear;
 vFailSide = aFailSide;
 vSeed = aSeed;
 vStage = aStage;
+vLandUse = aLandUse;
 vLocal = position;
 #ifdef USE_INSTANCING
   vec4 decayWorld = instanceMatrix * vec4(transformed, 1.0);
@@ -71,6 +83,7 @@ varying float vWear;
 varying float vFailSide;
 varying float vSeed;
 varying float vStage;
+varying float vLandUse;
 varying vec3 vLocal;
 varying vec3 vWorld;
 uniform vec4 uWearLayers;
@@ -80,11 +93,18 @@ uniform vec3 uToneConcrete;
 uniform vec3 uTonePlaster;
 uniform vec3 uToneMetal;
 uniform vec2 uGeoGate;
-uniform float uStageTint;
+uniform float uTintMode;
 uniform vec3 uStageNew;
 uniform vec3 uStageSettled;
 uniform vec3 uStageAbandoned;
 uniform vec3 uStageReclaimed;
+uniform vec3 uLandIndustry;
+uniform vec3 uLandCommerce;
+uniform vec3 uLandHousing;
+uniform vec3 uLandCivic;
+uniform vec3 uLandPark;
+uniform vec3 uLandFarm;
+uniform vec3 uLandYard;
 
 float decayHash21(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -204,17 +224,38 @@ vec3 voidCol = vec3(0.05, 0.055, 0.06);
 col = mix(col, voidCol, hole * 0.9);
 col = mix(col, rustCol, hole * edge * 0.4);
 
-// —— Stage tint (Phase 1 legend colors). Color only — no vertex move. ——
-if (uStageTint > 0.5) {
-  vec3 stageCol = uStageNew;
-  if (vStage > 0.5 && vStage < 1.5) stageCol = uStageSettled;
-  else if (vStage > 1.5 && vStage < 2.5) stageCol = uStageAbandoned;
-  else if (vStage > 2.5) stageCol = uStageReclaimed;
+// —— Land use / stage tint (color only — no vertex move). ——
+vec3 landCol = uLandHousing;
+if (vLandUse < 0.5) landCol = uLandIndustry;
+else if (vLandUse < 1.5) landCol = uLandCommerce;
+else if (vLandUse < 2.5) landCol = uLandHousing;
+else if (vLandUse < 3.5) landCol = uLandCivic;
+else if (vLandUse < 4.5) landCol = uLandPark;
+else if (vLandUse < 5.5) landCol = uLandFarm;
+else landCol = uLandYard;
+
+vec3 stageCol = uStageNew;
+if (vStage > 0.5 && vStage < 1.5) stageCol = uStageSettled;
+else if (vStage > 1.5 && vStage < 2.5) stageCol = uStageAbandoned;
+else if (vStage > 2.5) stageCol = uStageReclaimed;
+
+if (uTintMode < 0.5) {
+  col = mix(col, landCol, 0.88);
+} else if (uTintMode < 1.5) {
   col = mix(col, stageCol, 0.82);
+} else {
+  col = mix(col, landCol, 0.72);
+  col = mix(col, stageCol, 0.28);
 }
 
 diffuseColor.rgb = col;
 `
+
+function tintModeValue(mode: LandUseViewMode): number {
+  if (mode === 'landUse') return 0
+  if (mode === 'stage') return 1
+  return 2
+}
 
 export function createWearUniforms(mat: MaterialityParams): WearUniformBag {
   return {
@@ -229,11 +270,18 @@ export function createWearUniforms(mat: MaterialityParams): WearUniformBag {
     uTonePlaster: { value: new Color(toneHex(mat, 'plaster')) },
     uToneMetal: { value: new Color(toneHex(mat, 'metal')) },
     uGeoGate: { value: new Vector2(2.15, 0) },
-    uStageTint: { value: 1 },
+    uTintMode: { value: 0 },
     uStageNew: { value: new Color('#e8e2d6') },
     uStageSettled: { value: new Color('#d4a017') },
     uStageAbandoned: { value: new Color('#a84828') },
     uStageReclaimed: { value: new Color('#6b7260') },
+    uLandIndustry: { value: new Color(LAND_USE_COLORS.industry) },
+    uLandCommerce: { value: new Color(LAND_USE_COLORS.commerce) },
+    uLandHousing: { value: new Color(LAND_USE_COLORS.housing) },
+    uLandCivic: { value: new Color(LAND_USE_COLORS.civic) },
+    uLandPark: { value: new Color(LAND_USE_COLORS.park) },
+    uLandFarm: { value: new Color(LAND_USE_COLORS.farm) },
+    uLandYard: { value: new Color(LAND_USE_COLORS.yard) },
   }
 }
 
@@ -258,7 +306,7 @@ function layerVec4b(mat: MaterialityParams) {
 export function syncWearUniforms(
   u: WearUniformBag,
   mat: MaterialityParams,
-  stageTint = true,
+  tintMode: LandUseViewMode = 'landUse',
 ) {
   Object.assign(u.uWearLayers.value, layerVec4(mat))
   Object.assign(u.uWearLayers2.value, layerVec4b(mat))
@@ -266,7 +314,14 @@ export function syncWearUniforms(
   ;(u.uToneConcrete.value as Color).set(toneHex(mat, 'concrete'))
   ;(u.uTonePlaster.value as Color).set(toneHex(mat, 'plaster'))
   ;(u.uToneMetal.value as Color).set(toneHex(mat, 'metal'))
-  u.uStageTint.value = stageTint ? 1 : 0
+  u.uTintMode.value = tintModeValue(tintMode)
+  ;(u.uLandIndustry.value as Color).set(LAND_USE_COLORS.industry)
+  ;(u.uLandCommerce.value as Color).set(LAND_USE_COLORS.commerce)
+  ;(u.uLandHousing.value as Color).set(LAND_USE_COLORS.housing)
+  ;(u.uLandCivic.value as Color).set(LAND_USE_COLORS.civic)
+  ;(u.uLandPark.value as Color).set(LAND_USE_COLORS.park)
+  ;(u.uLandFarm.value as Color).set(LAND_USE_COLORS.farm)
+  ;(u.uLandYard.value as Color).set(LAND_USE_COLORS.yard)
 }
 
 export function createBuildingWearMaterial(mat: MaterialityParams): {
@@ -287,11 +342,18 @@ export function createBuildingWearMaterial(mat: MaterialityParams): {
     shader.uniforms.uTonePlaster = uniforms.uTonePlaster
     shader.uniforms.uToneMetal = uniforms.uToneMetal
     shader.uniforms.uGeoGate = uniforms.uGeoGate
-    shader.uniforms.uStageTint = uniforms.uStageTint
+    shader.uniforms.uTintMode = uniforms.uTintMode
     shader.uniforms.uStageNew = uniforms.uStageNew
     shader.uniforms.uStageSettled = uniforms.uStageSettled
     shader.uniforms.uStageAbandoned = uniforms.uStageAbandoned
     shader.uniforms.uStageReclaimed = uniforms.uStageReclaimed
+    shader.uniforms.uLandIndustry = uniforms.uLandIndustry
+    shader.uniforms.uLandCommerce = uniforms.uLandCommerce
+    shader.uniforms.uLandHousing = uniforms.uLandHousing
+    shader.uniforms.uLandCivic = uniforms.uLandCivic
+    shader.uniforms.uLandPark = uniforms.uLandPark
+    shader.uniforms.uLandFarm = uniforms.uLandFarm
+    shader.uniforms.uLandYard = uniforms.uLandYard
 
     shader.vertexShader = ATTR_BLOCK + shader.vertexShader
     shader.vertexShader = shader.vertexShader.replace(
@@ -305,7 +367,7 @@ export function createBuildingWearMaterial(mat: MaterialityParams): {
       FRAG_CHUNK,
     )
   }
-  material.customProgramCacheKey = () => 'decay-building-wear-v3'
+  material.customProgramCacheKey = () => 'decay-building-wear-v4-land'
   material.needsUpdate = true
   return { material, uniforms }
 }

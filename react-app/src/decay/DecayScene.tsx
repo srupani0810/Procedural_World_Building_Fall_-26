@@ -9,6 +9,7 @@ import type { TerrainParams } from '../terrainParams.ts'
 import type { BuildingHoverInfo } from './buildings.ts'
 import type { PlayerClaim } from './claims.ts'
 import type { FieldMaps } from './fields.ts'
+import type { LandUseViewMode } from './landUse.ts'
 import type { MaterialityParams } from './materiality.ts'
 import { DecayFog, DecaySky, StreamedNoiseGround } from './noiseGround.tsx'
 import { RoadNetwork } from './RoadNetwork.tsx'
@@ -45,7 +46,7 @@ export type DecaySceneProps = {
   materiality: MaterialityParams
   timelineT: number
   absenceClock: AbsenceClockParams
-  stageTint: boolean
+  tintMode?: LandUseViewMode
   onRoadLog: (lines: string[]) => void
   onCensus: (census: RoadCensus) => void
   onSelection?: (sel: DecaySelection) => void
@@ -70,7 +71,7 @@ export default function DecayScene({
   materiality,
   timelineT,
   absenceClock,
-  stageTint,
+  tintMode = 'landUse',
   onRoadLog,
   onCensus,
   onSelection,
@@ -128,7 +129,7 @@ export default function DecayScene({
         materiality={materiality}
         timelineT={timelineT}
         absenceClock={absenceClock}
-        stageTint={stageTint}
+        tintMode={tintMode}
         onFieldsPainted={onFieldsPainted}
         onBuildingHover={onBuildingHover}
         onAppendLog={onAppendLog}

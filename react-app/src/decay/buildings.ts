@@ -5,6 +5,11 @@
 
 import type { HeightFn, Vec2 } from './directionField.ts'
 import { sampleField, type FieldMaps } from './fields.ts'
+import {
+  isGroundOnly,
+  type LandUse,
+  type PlotLandUse,
+} from './landUse.ts'
 import type { MorphPlot } from './morphology.ts'
 import type { BuildingParams, FloorMode } from './params.ts'
 
@@ -36,6 +41,10 @@ export type BuildingInstance = {
   shrink: number
   /** Foundation slabs under the box (terrace may add several). */
   foundations: { y: number; height: number }[]
+  landUse?: LandUse
+  landUseRule?: string
+  /** Main mass vs yard tower / civic fin. */
+  part?: 'shell' | 'accent'
 }
 
 export type BuildingHoverInfo = {
@@ -51,6 +60,8 @@ export type BuildingHoverInfo = {
   z: number
   stage?: string
   age?: number
+  landUse?: LandUse
+  landUseRule?: string
 }
 
 const MIN_FOOT = 1.4
@@ -266,18 +277,117 @@ export function instanceFromPlot(
   }
 }
 
-/** Seed shells — every non-open plot. Phase 1 unchanged. */
+/**
+ * Per-type massing — replaces one generic box with readable land-use forms.
+ * Parks/Farms never reach here (ground-only).
+ */
+export function applyLandUseMassing(
+  inst: BuildingInstance,
+  lu: PlotLandUse | undefined,
+  halfExtent: number,
+): BuildingInstance[] {
+  if (!lu || isGroundOnly(lu.use)) return []
+  const out: BuildingInstance[] = []
+  const rim = Math.min(1, Math.hypot(inst.x, inst.z) / Math.max(1, halfExtent))
+  const base: BuildingInstance = {
+    ...inst,
+    landUse: lu.use,
+    landUseRule: lu.rule,
+    part: 'shell',
+    foundations: [...inst.foundations],
+  }
+
+  if (lu.use === 'industry') {
+    // Wide and low mill / plant shell.
+    base.width = Math.max(inst.width * 1.45, inst.width + 1.2)
+    base.depth = Math.max(inst.depth * 1.25, inst.depth + 0.8)
+    base.stories = Math.max(1, Math.min(2, Math.round(inst.stories * 0.45)))
+    out.push(base)
+    return out
+  }
+
+  if (lu.use === 'commerce') {
+    // Taller toward the center.
+    const boost = 1.15 + (1 - rim) * 1.35
+    base.width = inst.width * 0.95
+    base.depth = inst.depth * 0.9
+    base.stories = Math.max(2, Math.round(inst.stories * boost))
+    out.push(base)
+    return out
+  }
+
+  if (lu.use === 'housing') {
+    // Small domestic footprint.
+    base.width = Math.max(1.6, inst.width * 0.62)
+    base.depth = Math.max(1.6, inst.depth * 0.62)
+    base.stories = Math.max(1, Math.min(3, Math.round(inst.stories * 0.7)))
+    out.push(base)
+    return out
+  }
+
+  if (lu.use === 'civic') {
+    // Distinct upright bar + shallow plinth (accent).
+    base.width = Math.max(1.8, Math.min(inst.width, inst.depth) * 0.55)
+    base.depth = base.width
+    base.stories = Math.max(3, Math.round(inst.stories * 1.15) + 1)
+    out.push(base)
+    const plinth: BuildingInstance = {
+      ...base,
+      part: 'accent',
+      width: Math.max(base.width * 1.8, inst.width * 0.85),
+      depth: Math.max(base.depth * 1.8, inst.depth * 0.85),
+      stories: 0.35,
+      foundations: [],
+    }
+    out.push(plinth)
+    return out
+  }
+
+  if (lu.use === 'yard') {
+    // Flat pad + one tall element.
+    base.width = Math.max(inst.width * 1.15, inst.width + 0.5)
+    base.depth = Math.max(inst.depth * 1.15, inst.depth + 0.5)
+    base.stories = 0.45
+    out.push(base)
+    const tower: BuildingInstance = {
+      ...base,
+      part: 'accent',
+      x: base.x + Math.cos(base.yaw) * base.width * 0.28,
+      z: base.z + Math.sin(base.yaw) * base.width * 0.28,
+      width: Math.max(1.2, base.width * 0.22),
+      depth: Math.max(1.2, base.depth * 0.22),
+      stories: Math.max(4, Math.round(inst.stories) + 2),
+      foundations: [],
+    }
+    out.push(tower)
+    return out
+  }
+
+  out.push(base)
+  return out
+}
+
+/** Seed shells — non-open plots with land-use forms. Parks/Farms skipped. */
 export function buildBuildings(
   plots: MorphPlot[],
   fields: FieldMaps,
   heightAt: HeightFn,
   params: BuildingParams,
+  landUseById?: ReadonlyMap<number, PlotLandUse>,
+  halfExtent = 260,
 ): BuildingInstance[] {
   const out: BuildingInstance[] = []
   for (const plot of plots) {
     if (plot.open) continue
+    const lu = landUseById?.get(plot.id)
+    if (lu && isGroundOnly(lu.use)) continue
     const inst = instanceFromPlot(plot, fields, heightAt, params)
-    if (inst) out.push(inst)
+    if (!inst) continue
+    if (landUseById && lu) {
+      out.push(...applyLandUseMassing(inst, lu, halfExtent))
+    } else {
+      out.push(inst)
+    }
   }
   return out
 }
@@ -369,5 +479,7 @@ export function lookupHover(
     stories: b.stories,
     x: b.x,
     z: b.z,
+    landUse: b.landUse,
+    landUseRule: b.landUseRule,
   }
 }

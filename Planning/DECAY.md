@@ -154,6 +154,8 @@ New app mode **DECAY** (`react-app/src/decay/`) — **no shared settlement code 
 
 **Phase 2 claim (settled for DECAY, in progress):** click an **empty open morphology plot** (no seed building) to claim it — add-only, nothing cleared or restored. Claim starts at **1 story**, stage **new** (age zero at claim time). Hover on empty open lots shows **claimable**. Seed vacate profiles stay frozen so Phase 1 end state does not reshuffle when claims are added. Stack / tone swatches / town-decay % / lots-by-stage dock / claim RULE log lines still to wire.
 
+**Land use (settled for DECAY):** every morphology plot gets one of Industry / Commerce / Housing / Civic / Park / Farm / Yard by a fixed rule order with **quota caps** toward a realistic mix (Housing ~55–60% remainder; Industry ~10–12%; Commerce ~8–10%; Park = open share ~6–8%; Civic ~2–3%; Yard ~1–2%; Farm ~5–8%). Rules: open→Park; relative-flat outer→Farm; main outside core→Industry; main+junction near center→Commerce; main-spine corridor outside core→Yard; spaced collectors→Civic; else Housing. Flat = steep ≤ median. View switch: Land use / Stage / Both. Per-type massing (Industry wide+low, Commerce taller in core, Housing small, Civic upright+plinth, Yard pad+tower). Park/Farm = ground only. Stats show count + share %. Farms-only-at-edge, height falloff, row-house split, neighbor rules, and trees still to wire.
+
 Open items in *Still open* still apply (precedents, primary typology, strip-out, etc.).
 
 ---

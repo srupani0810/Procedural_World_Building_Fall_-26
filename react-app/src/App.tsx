@@ -15,6 +15,7 @@ import DecayScene from './decay/DecayScene.tsx'
 import { DecayShell } from './decay/DecayShell.tsx'
 import type { BuildingHoverInfo } from './decay/buildings.ts'
 import type { PlayerClaim } from './decay/claims.ts'
+import type { LandUseViewMode } from './decay/landUse.ts'
 import { createDefaultFieldMaps, resetField, type FieldMaps } from './decay/fields.ts'
 import {
   createDefaultMateriality,
@@ -158,6 +159,7 @@ function App() {
     { t: number; counts: StageCounts }[]
   >([])
   const [decayClaims, setDecayClaims] = useState<PlayerClaim[]>([])
+  const [decayTintMode, setDecayTintMode] = useState<LandUseViewMode>('landUse')
   const decayTimelineTRef = useRef(0)
   decayTimelineTRef.current = decayTimelineT
   const appendDecayLog = useCallback((lines: string[]) => {
@@ -367,7 +369,7 @@ function App() {
             materiality={decayMateriality}
             timelineT={decayTimelineT}
             absenceClock={decayAbsenceClock}
-            stageTint={decayScreen === 'phase1' || decayScreen === 'phase2'}
+            tintMode={decayTintMode}
             onRoadLog={setDecayRoadLog}
             onCensus={setDecayCensus}
             onSelection={setDecaySelection}
@@ -413,6 +415,8 @@ function App() {
           absenceClock={decayAbsenceClock}
           stageCounts={decayStageCounts}
           stageSeries={decayStageSeries}
+          tintMode={decayTintMode}
+          onTintMode={setDecayTintMode}
           onRoads={(patch) => setDecayRoads((c) => ({ ...c, ...patch }))}
           onView={(patch) => setDecayView((c) => ({ ...c, ...patch }))}
           onBuildings={(patch) => setDecayBuildings((c) => ({ ...c, ...patch }))}

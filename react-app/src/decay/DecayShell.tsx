@@ -26,6 +26,12 @@ import {
   type AbsenceClockParams,
   type StageCounts,
 } from './timeline.ts'
+import {
+  LAND_USE_COLORS,
+  LAND_USE_ORDER,
+  LAND_USE_RULE_TEXT,
+  type LandUseViewMode,
+} from './landUse.ts'
 import type {
   BuildingParams,
   DecayLogFilter,
@@ -258,6 +264,8 @@ export function DecayShell({
   absenceClock,
   stageCounts,
   stageSeries,
+  tintMode,
+  onTintMode,
   onRoads,
   onView,
   onBuildings,
@@ -288,6 +296,8 @@ export function DecayShell({
   absenceClock: AbsenceClockParams
   stageCounts: StageCounts
   stageSeries: { t: number; counts: StageCounts }[]
+  tintMode: LandUseViewMode
+  onTintMode: (m: LandUseViewMode) => void
   onRoads: (patch: Partial<RoadNetworkParams>) => void
   onView: (patch: Partial<DecayViewParams>) => void
   onBuildings: (patch: Partial<BuildingParams>) => void
@@ -430,6 +440,25 @@ export function DecayShell({
                 Uneven vacating: rim / steep / small plots start earlier; core lasts longest.
                 Stage flips one building at a time by onset rank.
               </p>
+              <p className="decay-hint">Color by</p>
+              <div className="decay-tools decay-tools-3" role="group" aria-label="Tint mode">
+                {(
+                  [
+                    ['landUse', 'Land use'],
+                    ['stage', 'Stage'],
+                    ['both', 'Both'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={tintMode === id ? 'is-active' : undefined}
+                    onClick={() => onTintMode(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <Slider
                 label="Intro time"
                 value={timelineT}
@@ -1339,6 +1368,28 @@ export function DecayShell({
               </button>
             </Fold>
             <Fold title="View" defaultOpen>
+              <p className="decay-hint">Color buildings by</p>
+              <div className="decay-tools decay-tools-3" role="group" aria-label="Tint mode">
+                {(
+                  [
+                    ['landUse', 'Land use'],
+                    ['stage', 'Stage'],
+                    ['both', 'Both'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={tintMode === id ? 'is-active' : undefined}
+                    onClick={() => onTintMode(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="decay-hint" style={{ marginTop: 6 }}>
+                Land use = type color. Stage = vacate tint. Both = type shape + light stage.
+              </p>
               <label className="decay-check">
                 <span>Show roads</span>
                 <input
@@ -1468,36 +1519,54 @@ export function DecayShell({
                 <span>Plot land</span>
                 <span>{(census.plotShare * 100).toFixed(1)}%</span>
               </div>
+              <p className="decay-hint" style={{ marginTop: 10 }}>
+                Land use · count · share
+              </p>
+              {(
+                [
+                  ['Housing', LAND_USE_COLORS.housing, census.landHousing],
+                  ['Industry', LAND_USE_COLORS.industry, census.landIndustry],
+                  ['Commerce', LAND_USE_COLORS.commerce, census.landCommerce],
+                  ['Park', LAND_USE_COLORS.park, census.landPark],
+                  ['Civic', LAND_USE_COLORS.civic, census.landCivic],
+                  ['Yard', LAND_USE_COLORS.yard, census.landYard],
+                  ['Farm', LAND_USE_COLORS.farm, census.landFarm],
+                ] as const
+              ).map(([label, color, count]) => {
+                const n = Math.max(1, census.plots)
+                const share = ((100 * count) / n).toFixed(1)
+                return (
+                  <div className="decay-row" key={label}>
+                    <span>
+                      <i className="decay-swatch" style={{ background: color }} /> {label}
+                    </span>
+                    <span>
+                      {count} · {share}%
+                    </span>
+                  </div>
+                )
+              })}
               <p className="decay-hint" style={{ marginTop: 8 }}>
                 Angle {Math.round(roads.angleDeg)}° · fill {angleFill.toFixed(0)}%
               </p>
             </Fold>
-            <Fold title="Layout legend" defaultOpen>
+            <Fold title="Land use legend" defaultOpen>
               <div className="decay-plot-legend">
-                <div className="decay-row">
-                  <span>
-                    <i className="decay-swatch" style={{ background: DECAY_MORPH.sidewalk }} /> sidewalk
-                  </span>
-                </div>
-                <div className="decay-row">
-                  <span>
-                    <i className="decay-swatch" style={{ background: DECAY_MORPH.buildingLine }} />{' '}
-                    building line
-                  </span>
-                </div>
-                <div className="decay-row">
-                  <span>
-                    <i className="decay-swatch" style={{ background: DECAY_MORPH.cornerPlot }} /> corner
-                    plot
-                  </span>
-                </div>
-                <div className="decay-row">
-                  <span>
-                    <i className="decay-swatch" style={{ background: DECAY_MORPH.openPlot }} /> open plot
-                  </span>
-                </div>
+                {LAND_USE_ORDER.map((u) => (
+                  <div className="decay-row" key={u}>
+                    <span>
+                      <i className="decay-swatch" style={{ background: LAND_USE_COLORS[u] }} /> {u}
+                    </span>
+                  </div>
+                ))}
               </div>
-              <p className="decay-hint">Boxes from Height / Size fields · open plots stay empty.</p>
+              <p className="decay-hint" style={{ marginTop: 8 }}>
+                {LAND_USE_ORDER.map((u) => LAND_USE_RULE_TEXT[u]).join(' · ')}
+              </p>
+              <p className="decay-hint">
+                Park / Farm = ground only. Industry wide+low · Commerce taller in core · Housing
+                small · Civic upright · Yard pad + tower.
+              </p>
             </Fold>
             <Fold title="Process log" defaultOpen>
               <LogChips filter={logFilter} onFilter={setLogFilter} />

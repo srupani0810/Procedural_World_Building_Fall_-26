@@ -32,6 +32,11 @@ import {
   type PlayerClaim,
 } from './claims.ts'
 import {
+  landUseIndex,
+  type LandUseViewMode,
+  type PlotLandUse,
+} from './landUse.ts'
+import {
   createBuildingWearMaterial,
   resolveMatId,
   seedFromPlot,
@@ -180,7 +185,7 @@ export function BuildingLayer({
   view,
   timelineT,
   absenceClock,
-  stageTint,
+  tintMode = 'landUse',
   onFieldsPainted,
   onHover,
   onAppendLog,
@@ -189,6 +194,7 @@ export function BuildingLayer({
   claims = [],
   claimEnabled = false,
   onClaim,
+  landUseById,
 }: {
   plots: MorphPlot[]
   heightAt: HeightFn
@@ -200,7 +206,7 @@ export function BuildingLayer({
   view: DecayViewParams
   timelineT: number
   absenceClock: AbsenceClockParams
-  stageTint: boolean
+  tintMode?: LandUseViewMode
   onFieldsPainted: () => void
   onHover: (info: BuildingHoverInfo | null, sx: number, sy: number) => void
   onAppendLog: (lines: string[]) => void
@@ -211,6 +217,7 @@ export function BuildingLayer({
   /** When true, click empty open lot to claim; hover shows claimable. */
   claimEnabled?: boolean
   onClaim?: (plotId: number) => void
+  landUseById?: ReadonlyMap<number, PlotLandUse>
 }) {
   const buildingMesh = useRef<InstancedMesh>(null)
   const foundationMesh = useRef<InstancedMesh>(null)
@@ -231,9 +238,9 @@ export function BuildingLayer({
   const wearMaterial = wearBundle.material
 
   useEffect(() => {
-    syncWearUniforms(wearUniforms, materiality, stageTint)
+    syncWearUniforms(wearUniforms, materiality, tintMode)
     wearMaterial.needsUpdate = true
-  }, [materiality, wearUniforms, wearMaterial, stageTint])
+  }, [materiality, wearUniforms, wearMaterial, tintMode])
 
   useEffect(
     () => () => {
@@ -249,13 +256,15 @@ export function BuildingLayer({
   }, [claims])
 
   const seedInstances = useMemo(
-    () => buildBuildings(plots, fields, heightAt, buildings),
+    () => buildBuildings(plots, fields, heightAt, buildings, landUseById, halfExtent),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       plots,
       fields,
       fieldRevision,
       heightAt,
+      halfExtent,
+      landUseById,
       buildings.storyHeight,
       buildings.minStories,
       buildings.maxStories,
@@ -266,6 +275,12 @@ export function BuildingLayer({
       buildings.terraceStep,
       buildings.steepShrink,
     ],
+  )
+
+  /** One shell per plot for vacate / census — accents share plot id. */
+  const seedShells = useMemo(
+    () => seedInstances.filter((b) => b.part !== 'accent'),
+    [seedInstances],
   )
 
   const claimedInstances = useMemo(
@@ -299,8 +314,8 @@ export function BuildingLayer({
 
   // Seed vacate ranks stay frozen when claims are added — Phase 1 end state unchanged.
   const seedVacateProfiles = useMemo(
-    () => buildVacateProfiles(seedInstances, halfExtent),
-    [seedInstances, halfExtent],
+    () => buildVacateProfiles(seedShells, halfExtent),
+    [seedShells, halfExtent],
   )
   const vacateById = useMemo(() => {
     const m = profileMap(seedVacateProfiles)
@@ -324,14 +339,19 @@ export function BuildingLayer({
   const prevStagesRef = useRef<Map<number, LotStage>>(new Map())
   const claimPointerRef = useRef<{ x: number; y: number } | null>(null)
 
+  const censusInstances = useMemo(
+    () => instances.filter((b) => b.part !== 'accent'),
+    [instances],
+  )
+
   useEffect(() => {
     // Chart history is seed-only so Phase 2 claims do not rewrite the intro series.
-    onStageSeries(sampleStageSeries(seedInstances, profileMap(seedVacateProfiles), absenceClock))
-    onStageCensus(countStages(instances, timelineT, vacateById, absenceClock))
+    onStageSeries(sampleStageSeries(seedShells, profileMap(seedVacateProfiles), absenceClock))
+    onStageCensus(countStages(censusInstances, timelineT, vacateById, absenceClock))
   }, [
-    seedInstances,
+    seedShells,
     seedVacateProfiles,
-    instances,
+    censusInstances,
     vacateById,
     absenceClock,
     timelineT,
@@ -379,6 +399,7 @@ export function BuildingLayer({
     const fails = new Float32Array(Math.max(n, 1))
     const seeds = new Float32Array(Math.max(n, 1))
     const stages = new Float32Array(Math.max(n, 1))
+    const lands = new Float32Array(Math.max(n, 1))
     const stageLogs: string[] = []
     const prev = prevStagesRef.current
     const nextPrev = new Map<number, LotStage>()
@@ -389,14 +410,14 @@ export function BuildingLayer({
 
     for (let i = 0; i < n; i++) {
       const b = instances[i]!
-      const h = b.stories * b.storyHeight
+      const h = Math.max(0.2, b.stories * b.storyHeight)
       const st = stageAtTime(b.plotId, timelineT, vacateById, absenceClock)
       // Materiality wear scrub can still preview; timeline stage drives aStage tint.
       const wear = Math.max(wearForBuilding(materiality, b.x, b.z), st.age > 0 ? stageIndex(st.stage) : 0)
       const fail = exposedFailSide(b.x, b.z, b.yaw)
       matIds[i] = resolveMatId(
         materiality,
-        b.stories,
+        Math.max(1, b.stories),
         buildings.maxStories,
         b.x,
         b.z,
@@ -406,10 +427,13 @@ export function BuildingLayer({
       fails[i] = fail
       seeds[i] = seedFromPlot(b.plotId)
       stages[i] = stageIndex(st.stage)
-      nextPrev.set(b.plotId, st.stage)
-      const was = prev.get(b.plotId)
-      if (was != null && was !== st.stage) {
-        stageLogs.push(formatStageLog(b.plotId, was, st.stage, st.rule, timelineT))
+      lands[i] = b.landUse != null ? landUseIndex(b.landUse) : 2
+      if (b.part !== 'accent') {
+        nextPrev.set(b.plotId, st.stage)
+        const was = prev.get(b.plotId)
+        if (was != null && was !== st.stage) {
+          stageLogs.push(formatStageLog(b.plotId, was, st.stage, st.rule, timelineT))
+        }
       }
 
       dummy.position.set(b.x, b.floorY + h * 0.5, b.z)
@@ -469,6 +493,7 @@ export function BuildingLayer({
     geo.setAttribute('aFailSide', new InstancedBufferAttribute(fails, 1))
     geo.setAttribute('aSeed', new InstancedBufferAttribute(seeds, 1))
     geo.setAttribute('aStage', new InstancedBufferAttribute(stages, 1))
+    geo.setAttribute('aLandUse', new InstancedBufferAttribute(lands, 1))
 
     mesh.count = n
     mesh.instanceMatrix.needsUpdate = true

@@ -29,7 +29,7 @@ function PreviewShells({ materiality }: { materiality: MaterialityParams }) {
   const { material, uniforms } = bundle
 
   useEffect(() => {
-    syncWearUniforms(uniforms, materiality)
+    syncWearUniforms(uniforms, materiality, 'stage')
     material.needsUpdate = true
   }, [materiality, uniforms, material])
 
@@ -45,6 +45,7 @@ function PreviewShells({ materiality }: { materiality: MaterialityParams }) {
     const fails = new Float32Array(4)
     const seeds = new Float32Array(4)
     const stages = new Float32Array(4)
+    const lands = new Float32Array(4)
     for (let i = 0; i < 4; i++) {
       matIds[i] =
         materiality.material === 'mixed'
@@ -54,6 +55,7 @@ function PreviewShells({ materiality }: { materiality: MaterialityParams }) {
       fails[i] = 0
       seeds[i] = seedFromPlot(40 + i)
       stages[i] = i
+      lands[i] = 2
       dummy.position.set((i - 1.5) * 1.55, 0.9, 0)
       dummy.rotation.set(0, 0.35, 0)
       dummy.scale.set(0.85, 1.8, 0.7)
@@ -65,6 +67,7 @@ function PreviewShells({ materiality }: { materiality: MaterialityParams }) {
     m.geometry.setAttribute('aFailSide', new InstancedBufferAttribute(fails, 1))
     m.geometry.setAttribute('aSeed', new InstancedBufferAttribute(seeds, 1))
     m.geometry.setAttribute('aStage', new InstancedBufferAttribute(stages, 1))
+    m.geometry.setAttribute('aLandUse', new InstancedBufferAttribute(lands, 1))
     m.count = 4
     m.instanceMatrix.needsUpdate = true
   }, [materiality, dummy])

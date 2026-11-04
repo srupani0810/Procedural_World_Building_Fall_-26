@@ -30,6 +30,13 @@ import { BuildingLayer } from './BuildingLayer.tsx'
 import type { BuildingHoverInfo } from './buildings.ts'
 import type { PlayerClaim } from './claims.ts'
 import type { FieldMaps } from './fields.ts'
+import {
+  assignLandUse,
+  LAND_USE_COLORS,
+  type LandUse,
+  type LandUseViewMode,
+  type PlotLandUse,
+} from './landUse.ts'
 import type { MaterialityParams } from './materiality.ts'
 import type {
   BuildingParams,
@@ -88,6 +95,15 @@ const RGB_PLOT = hexRgb(DECAY_MORPH.plot)
 const RGB_CORNER = hexRgb(DECAY_MORPH.cornerPlot)
 const RGB_OPEN = hexRgb(DECAY_MORPH.openPlot)
 const RGB_BL = hexRgb(DECAY_MORPH.buildingLine)
+const RGB_LAND: Record<LandUse, Rgb> = {
+  industry: hexRgb(LAND_USE_COLORS.industry),
+  commerce: hexRgb(LAND_USE_COLORS.commerce),
+  housing: hexRgb(LAND_USE_COLORS.housing),
+  civic: hexRgb(LAND_USE_COLORS.civic),
+  park: hexRgb(LAND_USE_COLORS.park),
+  farm: hexRgb(LAND_USE_COLORS.farm),
+  yard: hexRgb(LAND_USE_COLORS.yard),
+}
 
 function sampleEdge(a: { x: number; z: number }, b: { x: number; z: number }, heightAt: HeightFn): Sample[] {
   const len = Math.hypot(b.x - a.x, b.z - a.z)
@@ -351,10 +367,19 @@ function pushRingTris(
   }
 }
 
+function farmStripeRgb(x: number, z: number): Rgb {
+  const band = Math.floor((x + z) / 3.2)
+  const on = ((band % 2) + 2) % 2 === 0
+  const base = RGB_LAND.farm
+  if (on) return base
+  return [base[0]! * 0.72, base[1]! * 0.78, base[2]! * 0.55]
+}
+
 function buildPlotMeshes(
   morph: ReturnType<typeof buildMorphology>,
   heightAt: HeightFn,
   view: DecayViewParams,
+  landById?: ReadonlyMap<number, PlotLandUse>,
 ) {
   const pos: number[] = []
   const nrm: number[] = []
@@ -362,17 +387,30 @@ function buildPlotMeshes(
   const linePos: number[] = []
 
   for (const plot of morph.plots) {
+    const lu = landById?.get(plot.id)
+    const isPark = lu?.use === 'park'
+    const isFarm = lu?.use === 'farm'
     const isOpen = plot.open && view.showOpenPlots
     const isCorner = plot.corner && view.showCornerPlots
-    if (!view.showPlots && !isOpen && !isCorner) continue
-    let rgb = RGB_PLOT
-    if (isOpen) rgb = RGB_OPEN
-    else if (isCorner) rgb = RGB_CORNER
+    // Always draw park/farm ground cover; other plots follow showPlots flags.
+    if (!isPark && !isFarm && !view.showPlots && !isOpen && !isCorner) continue
 
     const quads = plotQuads(plot.ring, heightAt, PLOT_LIFT)
-    pushRingTris(pos, nrm, col, quads, rgb)
+    if (isFarm) {
+      for (const q of quads) {
+        const cx = (q[0]!.x + q[1]!.x + q[2]!.x + q[3]!.x) * 0.25
+        const cz = (q[0]!.z + q[1]!.z + q[2]!.z + q[3]!.z) * 0.25
+        pushRingTris(pos, nrm, col, [q], farmStripeRgb(cx, cz))
+      }
+    } else {
+      let rgb = RGB_PLOT
+      if (lu) rgb = RGB_LAND[lu.use]
+      else if (isOpen) rgb = RGB_OPEN
+      else if (isCorner) rgb = RGB_CORNER
+      pushRingTris(pos, nrm, col, quads, rgb)
+    }
 
-    if (view.showBuildingLine && plot.buildingLine.length >= 2) {
+    if (view.showBuildingLine && plot.buildingLine.length >= 2 && !isPark && !isFarm) {
       const ring = plot.buildingLine
       for (let i = 0; i < ring.length; i++) {
         const a = ring[i]!
@@ -490,7 +528,7 @@ export function RoadNetwork({
   materiality,
   timelineT,
   absenceClock,
-  stageTint,
+  tintMode = 'landUse',
   onFieldsPainted,
   onBuildingHover,
   onAppendLog,
@@ -513,7 +551,7 @@ export function RoadNetwork({
   materiality: MaterialityParams
   timelineT: number
   absenceClock: AbsenceClockParams
-  stageTint: boolean
+  tintMode?: LandUseViewMode
   onFieldsPainted: () => void
   onBuildingHover: (info: BuildingHoverInfo | null, sx: number, sy: number) => void
   onAppendLog: (lines: string[]) => void
@@ -590,7 +628,19 @@ export function RoadNetwork({
     onLog(lines)
   }
 
-  const report = (g: RoadGraph, morph: ReturnType<typeof buildMorphology>) => {
+  const report = (
+    g: RoadGraph,
+    morph: ReturnType<typeof buildMorphology>,
+    landCounts?: {
+      industry: number
+      commerce: number
+      housing: number
+      civic: number
+      park: number
+      farm: number
+      yard: number
+    },
+  ) => {
     onCensusRef.current({
       nodes: g.nodes.length,
       roads: g.edges.length,
@@ -604,15 +654,23 @@ export function RoadNetwork({
       roadShare: morph.stats.roadShare,
       sidewalkShare: morph.stats.sidewalkShare,
       plotShare: morph.stats.plotShare,
+      landIndustry: landCounts?.industry ?? 0,
+      landCommerce: landCounts?.commerce ?? 0,
+      landHousing: landCounts?.housing ?? 0,
+      landCivic: landCounts?.civic ?? 0,
+      landPark: landCounts?.park ?? 0,
+      landFarm: landCounts?.farm ?? 0,
+      landYard: landCounts?.yard ?? 0,
     })
   }
 
   const runMorph = (g: RoadGraph, extra: string[] = [], replaceLog = false) => {
     const morph = buildMorphology(g, roadsRef.current, heightRef.current, morphCacheRef.current)
     morphCacheRef.current = morph.cache
-    if (replaceLog) publish([...extra, ...morph.log])
-    else publish(appendLog(logRef.current, [...extra, ...morph.log]))
-    report(g, morph)
+    const land = assignLandUse(morph.plots, g, roadsRef.current)
+    if (replaceLog) publish([...extra, ...morph.log, land.summary])
+    else publish(appendLog(logRef.current.filter((l) => !l.startsWith('[land]')), [...extra, ...morph.log, land.summary]))
+    report(g, morph, land.counts)
     return morph
   }
 
@@ -652,6 +710,17 @@ export function RoadNetwork({
     return result
   }, [graph, roads, heightAt, morphKey])
 
+  const landUse = useMemo(
+    () => assignLandUse(morph.plots, graph, roads),
+    [morph.plots, graph, roads.halfExtent, morphKey],
+  )
+
+  // Keep census land counts in sync with the live morph (runMorph also reports).
+  useEffect(() => {
+    report(graph, morph, landUse.counts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [landUse.summary, graph, morph])
+
   const roadGeo = useMemo(
     () => buildRoadMesh(graph, heightAt, roads),
     [graph, heightAt, roads.mainWidth, roads.collectorWidth, roads.localWidth, roads.cornerRadius],
@@ -661,8 +730,8 @@ export function RoadNetwork({
     [graph, heightAt, roads.mainWidth, roads.collectorWidth, roads.localWidth, roads.sidewalkWidth],
   )
   const plotBuilt = useMemo(
-    () => buildPlotMeshes(morph, heightAt, view),
-    [morph, heightAt, view.showPlots, view.showCornerPlots, view.showOpenPlots, view.showBuildingLine],
+    () => buildPlotMeshes(morph, heightAt, view, landUse.byId),
+    [morph, heightAt, view.showPlots, view.showCornerPlots, view.showOpenPlots, view.showBuildingLine, landUse.byId],
   )
 
   useEffect(() => {
@@ -960,7 +1029,7 @@ export function RoadNetwork({
         view={view}
         timelineT={timelineT}
         absenceClock={absenceClock}
-        stageTint={stageTint}
+        tintMode={tintMode}
         onFieldsPainted={onFieldsPainted}
         onHover={onBuildingHover}
         onAppendLog={onAppendLog}
@@ -969,6 +1038,7 @@ export function RoadNetwork({
         claims={claims}
         claimEnabled={claimEnabled}
         onClaim={onClaim}
+        landUseById={landUse.byId}
       />
       {view.showPlots || view.showCornerPlots || view.showOpenPlots ? (
         plotBuilt.geo.attributes.position ? (
