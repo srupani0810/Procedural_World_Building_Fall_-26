@@ -19,7 +19,6 @@ import {
   CanvasTexture,
   Color,
   Group,
-  Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,

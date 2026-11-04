@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="304" height="64" viewBox="0 0 304 64" role="img" aria-label="REFERENCES">
+  <title>REFERENCES</title>
+  <rect width="304" height="64" fill="#000000"/>
+  <rect x="1" y="1" width="302" height="62" fill="none" stroke="#ef3b2d" stroke-width="2"/>
+  <rect x="24" y="47" width="42" height="2" fill="#ef3b2d"/>
+  <g transform="translate(30.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h9.60v3.14h-9.6zM12.80,3.14h3.20v6.29h-3.2zM3.20,9.43h9.60v3.14h-9.6zM6.40,12.57h3.20v3.14h-3.2zM9.60,15.71h3.20v3.14h-3.2zM12.80,18.86h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(52.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h12.80v3.14h-12.8zM3.20,9.43h9.60v3.14h-9.6zM3.20,18.86h12.80v3.14h-12.8z"/></g>
+    <g transform="translate(74.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h12.80v3.14h-12.8zM3.20,9.43h9.60v3.14h-9.6z"/></g>
+    <g transform="translate(96.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h12.80v3.14h-12.8zM3.20,9.43h9.60v3.14h-9.6zM3.20,18.86h12.80v3.14h-12.8z"/></g>
+    <g transform="translate(118.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h9.60v3.14h-9.6zM12.80,3.14h3.20v6.29h-3.2zM3.20,9.43h9.60v3.14h-9.6zM6.40,12.57h3.20v3.14h-3.2zM9.60,15.71h3.20v3.14h-3.2zM12.80,18.86h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(140.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h12.80v3.14h-12.8zM3.20,9.43h9.60v3.14h-9.6zM3.20,18.86h12.80v3.14h-12.8z"/></g>
+    <g transform="translate(162.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM12.80,0.00h3.20v22.00h-3.2zM3.20,3.14h3.20v3.14h-3.2zM6.40,6.29h3.20v6.29h-3.2zM9.60,12.57h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(184.00,20.00)"><path fill="#e9e4dc" d="M3.20,0.00h9.60v3.14h-9.6zM0.00,3.14h3.20v15.71h-3.2zM3.20,18.86h9.60v3.14h-9.6zM12.80,3.14h3.20v3.14h-3.2zM12.80,15.71h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(206.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h12.80v3.14h-12.8zM3.20,9.43h9.60v3.14h-9.6zM3.20,18.86h12.80v3.14h-12.8z"/></g>
+    <g transform="translate(228.00,20.00)"><path fill="#e9e4dc" d="M3.20,0.00h9.60v3.14h-9.6zM0.00,3.14h3.20v6.29h-3.2zM3.20,9.43h9.60v3.14h-9.6zM12.80,12.57h3.20v6.29h-3.2zM3.20,18.86h9.60v3.14h-9.6z"/></g>
+</svg>

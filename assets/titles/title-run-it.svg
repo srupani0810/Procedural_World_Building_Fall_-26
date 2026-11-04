@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="209" height="64" viewBox="0 0 209 64" role="img" aria-label="RUN IT">
+  <title>RUN IT</title>
+  <rect width="209" height="64" fill="#000000"/>
+  <rect x="1" y="1" width="207" height="62" fill="none" stroke="#ef3b2d" stroke-width="2"/>
+  <rect x="24" y="47" width="36" height="2" fill="#ef3b2d"/>
+  <g transform="translate(30.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h9.60v3.14h-9.6zM12.80,3.14h3.20v6.29h-3.2zM3.20,9.43h9.60v3.14h-9.6zM6.40,12.57h3.20v3.14h-3.2zM9.60,15.71h3.20v3.14h-3.2zM12.80,18.86h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(52.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v18.86h-3.2zM12.80,0.00h3.20v18.86h-3.2zM3.20,18.86h9.60v3.14h-9.6z"/></g>
+    <g transform="translate(74.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM12.80,0.00h3.20v22.00h-3.2zM3.20,3.14h3.20v3.14h-3.2zM6.40,6.29h3.20v6.29h-3.2zM9.60,12.57h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(110.80,20.00)"><path fill="#e9e4dc" d="M3.20,0.00h9.60v3.14h-9.6zM6.40,3.14h3.20v15.71h-3.2zM3.20,18.86h9.60v3.14h-9.6z"/></g>
+    <g transform="translate(132.80,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h16.00v3.14h-16zM6.40,3.14h3.20v18.86h-3.2z"/></g>
+</svg>

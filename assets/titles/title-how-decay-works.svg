@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="64" viewBox="0 0 400 64" role="img" aria-label="HOW DECAY WORKS">
+  <title>HOW DECAY WORKS</title>
+  <rect width="400" height="64" fill="#000000"/>
+  <rect x="1" y="1" width="398" height="62" fill="none" stroke="#ef3b2d" stroke-width="2"/>
+  <rect x="24" y="47" width="61" height="2" fill="#ef3b2d"/>
+  <g transform="translate(30.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM12.80,0.00h3.20v22.00h-3.2zM3.20,9.43h9.60v3.14h-9.6z"/></g>
+    <g transform="translate(52.00,20.00)"><path fill="#e9e4dc" d="M3.20,0.00h9.60v3.14h-9.6zM0.00,3.14h3.20v15.71h-3.2zM12.80,3.14h3.20v15.71h-3.2zM3.20,18.86h9.60v3.14h-9.6z"/></g>
+    <g transform="translate(74.00,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v18.86h-3.2zM12.80,0.00h3.20v18.86h-3.2zM3.20,15.71h3.20v3.14h-3.2zM9.60,15.71h3.20v3.14h-3.2zM6.40,9.43h3.20v9.43h-3.2z"/></g>
+    <g transform="translate(110.80,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h9.60v3.14h-9.6zM3.20,18.86h9.60v3.14h-9.6zM12.80,3.14h3.20v15.71h-3.2z"/></g>
+    <g transform="translate(132.80,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h12.80v3.14h-12.8zM3.20,9.43h9.60v3.14h-9.6zM3.20,18.86h12.80v3.14h-12.8z"/></g>
+    <g transform="translate(154.80,20.00)"><path fill="#e9e4dc" d="M3.20,0.00h9.60v3.14h-9.6zM0.00,3.14h3.20v15.71h-3.2zM3.20,18.86h9.60v3.14h-9.6zM12.80,3.14h3.20v3.14h-3.2zM12.80,15.71h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(176.80,20.00)"><path fill="#e9e4dc" d="M0.00,3.14h3.20v18.86h-3.2zM12.80,3.14h3.20v18.86h-3.2zM3.20,0.00h9.60v3.14h-9.6zM3.20,9.43h9.60v3.14h-9.6z"/></g>
+    <g transform="translate(198.80,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v6.29h-3.2zM12.80,0.00h3.20v6.29h-3.2zM3.20,6.29h3.20v3.14h-3.2zM9.60,6.29h3.20v3.14h-3.2zM6.40,9.43h3.20v12.57h-3.2z"/></g>
+    <g transform="translate(235.60,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v18.86h-3.2zM12.80,0.00h3.20v18.86h-3.2zM3.20,15.71h3.20v3.14h-3.2zM9.60,15.71h3.20v3.14h-3.2zM6.40,9.43h3.20v9.43h-3.2z"/></g>
+    <g transform="translate(257.60,20.00)"><path fill="#e9e4dc" d="M3.20,0.00h9.60v3.14h-9.6zM0.00,3.14h3.20v15.71h-3.2zM12.80,3.14h3.20v15.71h-3.2zM3.20,18.86h9.60v3.14h-9.6z"/></g>
+    <g transform="translate(279.60,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM3.20,0.00h9.60v3.14h-9.6zM12.80,3.14h3.20v6.29h-3.2zM3.20,9.43h9.60v3.14h-9.6zM6.40,12.57h3.20v3.14h-3.2zM9.60,15.71h3.20v3.14h-3.2zM12.80,18.86h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(301.60,20.00)"><path fill="#e9e4dc" d="M0.00,0.00h3.20v22.00h-3.2zM12.80,0.00h3.20v3.14h-3.2zM9.60,3.14h3.20v3.14h-3.2zM6.40,6.29h3.20v3.14h-3.2zM3.20,9.43h3.20v3.14h-3.2zM6.40,12.57h3.20v3.14h-3.2zM9.60,15.71h3.20v3.14h-3.2zM12.80,18.86h3.20v3.14h-3.2z"/></g>
+    <g transform="translate(323.60,20.00)"><path fill="#e9e4dc" d="M3.20,0.00h9.60v3.14h-9.6zM0.00,3.14h3.20v6.29h-3.2zM3.20,9.43h9.60v3.14h-9.6zM12.80,12.57h3.20v6.29h-3.2zM3.20,18.86h9.60v3.14h-9.6z"/></g>
+</svg>
