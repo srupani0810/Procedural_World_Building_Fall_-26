@@ -5,6 +5,7 @@
  */
 
 import { BufferGeometry } from 'three'
+import { getBuildingType } from './buildingTypeTable.ts'
 import { HOUSE_BEFORE } from './housePalette.ts'
 import {
   mergeParts,
@@ -47,15 +48,31 @@ export function walkupVariantFromSeed(
   corner: boolean,
   baseStories: number,
 ): WalkupVariant {
+  const t = getBuildingType('walkup')
   const seed = plotId * 19 + Math.floor(rim * 100)
-  // Prefer massing stories (4–6 from Height field).
-  const stories = (baseStories >= 6 ? 6 : baseStories >= 5 ? 5 : 4) as 4 | 5 | 6
-  const bodyToneIndex = pickIndex(seed + 3, HOUSE_BEFORE.walkupBodies.length)
-  const doorColorIndex = pickIndex(seed + 7, HOUSE_BEFORE.doors.length)
-  // Bays by plot position + more common near center.
+  // Prefer massing stories from Height field, clamped to table.
+  const stories = (
+    baseStories >= t.size.storyMax
+      ? t.size.storyMax
+      : baseStories >= 5
+        ? 5
+        : t.size.storyMin
+  ) as 4 | 5 | 6
+  const bodyToneIndex = pickIndex(
+    seed + 3,
+    Math.max(1, t.colors.wallTones.length),
+  )
+  const doorColorIndex = pickIndex(
+    seed + 7,
+    Math.max(1, t.colors.doorTones.length),
+  )
+  // Bays by plot position + more common near center (distanceToCenter + block).
   const bayChance = rim < 0.35 ? 2 : rim < 0.5 ? 3 : 5
-  const hasBay = pickIndex(seed + 11 + (plotId % 5), bayChance) === 0
-  const hasChimney = pickIndex(seed + 13, 3) !== 0
+  const hasBay =
+    t.windows.bayAllowed &&
+    pickIndex(seed + 11 + (plotId % 5), bayChance) === 0
+  const hasChimney =
+    t.entrance.chimneyCount > 0 && pickIndex(seed + 13, 3) !== 0
   const cornerSide: -1 | 1 = pickIndex(seed + 17, 2) === 0 ? -1 : 1
   return {
     stories,
@@ -108,22 +125,23 @@ function evenWindowGrid(stories: number, hasBay: boolean): BufferGeometry[] {
 /** Build merged walk-up geometry in unit space. */
 export function buildWalkupHouseGeometry(v: WalkupVariant): BufferGeometry {
   const parts: BufferGeometry[] = []
+  const t = getBuildingType('walkup')
   const stories = v.stories
-  const body = HOUSE_BEFORE.walkupBodies[v.bodyToneIndex]!
-  const doorHex = HOUSE_BEFORE.doors[v.doorColorIndex]!
+  const body = t.colors.wallTones[v.bodyToneIndex] ?? t.colors.wall
+  const doorHex = t.colors.doorTones[v.doorColorIndex] ?? t.colors.doorTones[0]!
 
   parts.push(partWallMass(stories, body))
   parts.push(partBaseBand(HOUSE_BEFORE.stone))
-  parts.push(...partFlatRoofCornice(stories))
+  if (t.roof.kind === 'flatCornice') parts.push(...partFlatRoofCornice(stories))
   parts.push(...partStairBulkhead(stories))
   if (v.hasChimney) parts.push(partChimney(stories, 1))
 
   // Centered entrance on the street (−Z).
-  parts.push(...partStoop(0))
-  parts.push(...partDoorWithTransom(0, doorHex))
+  if (t.entrance.stoopSteps > 0) parts.push(...partStoop(t.entrance.doorOffset))
+  parts.push(...partDoorWithTransom(t.entrance.doorOffset, doorHex))
   parts.push(partEntranceCanopy())
 
-  parts.push(...evenWindowGrid(stories, v.hasBay))
+  if (t.windows.implemented) parts.push(...evenWindowGrid(stories, v.hasBay))
 
   if (v.corner) {
     const side = v.cornerSide

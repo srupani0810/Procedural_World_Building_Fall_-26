@@ -1,6 +1,7 @@
 /**
  * Commerce low-rise meshes from the parts kit (Before palette).
  * Corner shop + main-street block only.
+ * Params from buildingTypeTable via commerceForms.
  */
 
 import { useLayoutEffect, useMemo, useRef } from 'react'

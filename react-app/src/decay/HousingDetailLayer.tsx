@@ -1,6 +1,7 @@
 /**
  * Detailed housing meshes from the parts kit (Before palette).
  * Row + walk-up; tenement stays on the box layer until its form passes.
+ * Variants / colors / size bands read buildingTypeTable via form builders.
  */
 
 import { useLayoutEffect, useMemo, useRef } from 'react'

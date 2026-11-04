@@ -20,7 +20,8 @@ import {
   type CommerceKind,
   emptyCommerceCounts,
 } from './commerceForms.ts'
-import { FORM_HEIGHT_RANGES, storiesFromField } from './formHeight.ts'
+import { getBuildingType } from './buildingTypeTable.ts'
+import { storiesFromField } from './formHeight.ts'
 import {
   assignIndustryKinds,
   massIndustry,
@@ -371,10 +372,14 @@ export function applyLandUseMassing(
   }
 
   if (lu.use === 'civic') {
-    // No tall tower — mid block from Height field (2–4).
-    base.width = Math.max(4, inst.width * 0.88)
-    base.depth = Math.max(3.5, inst.depth * 0.85)
-    base.stories = storiesFromField(FORM_HEIGHT_RANGES.civic, inst.heightField)
+    // No tall tower — mid block from Height field (table: civic).
+    const t = getBuildingType('civic')
+    base.width = Math.max(t.size.minWidth, inst.width * t.size.widthMult)
+    base.depth = Math.max(t.size.minDepth, inst.depth * t.size.depthMult)
+    base.stories = storiesFromField(
+      { min: t.size.storyMin, max: t.size.storyMax },
+      inst.heightField,
+    )
     out.push(base)
     return out
   }

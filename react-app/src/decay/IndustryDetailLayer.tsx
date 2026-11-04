@@ -1,6 +1,6 @@
 /**
  * Industry + rail-yard meshes from the parts kit (Before city palette).
- * Housing forms are untouched here.
+ * Params from buildingTypeTable via industryForms.
  */
 
 import { useLayoutEffect, useMemo, useRef } from 'react'

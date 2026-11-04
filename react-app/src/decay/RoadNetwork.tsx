@@ -34,7 +34,7 @@ import {
   type BuildingHoverInfo,
 } from './buildings.ts'
 import type { PlayerClaim } from './claims.ts'
-import { DecayFirstPerson } from './DecayFirstPerson.tsx'
+import { DecayFirstPerson, type JumpDebugInfo } from './DecayFirstPerson.tsx'
 import type { FieldMaps } from './fields.ts'
 import { findJumpInSpawn } from './jumpInSpawn.ts'
 import { JumpInErrorBoundary } from './JumpInErrorBoundary.tsx'
@@ -589,6 +589,7 @@ export function RoadNetwork({
   onExitJumpIn,
   onJumpFail,
   onAppendJumpLog,
+  onJumpDebug,
 }: {
   terrain: TerrainParams
   roads: RoadNetworkParams
@@ -617,6 +618,7 @@ export function RoadNetwork({
   onExitJumpIn?: () => void
   onJumpFail?: (reason: string) => void
   onAppendJumpLog?: (line: string) => void
+  onJumpDebug?: (info: JumpDebugInfo) => void
 }) {
   const heightAt = useMemo(() => makeHeightAt(terrain), [terrain])
   const [graph, setGraph] = useState<RoadGraph>(() => emptyGraph())
@@ -1362,6 +1364,7 @@ export function RoadNetwork({
           onFail={handleJumpFail}
           onWindowFollow={onWindowFollow}
           onSpawnLog={onAppendJumpLog}
+          onDebug={onJumpDebug}
         />
       </JumpInErrorBoundary>
     </group>

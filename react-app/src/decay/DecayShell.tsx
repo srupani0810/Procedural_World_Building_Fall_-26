@@ -260,6 +260,7 @@ export function DecayShell({
   onViewTab,
   jumpFailMessage = null,
   onDismissJumpFail,
+  jumpDebugLine = null,
   roads,
   view,
   buildings,
@@ -296,6 +297,7 @@ export function DecayShell({
   onViewTab: (t: DecayViewTab) => void
   jumpFailMessage?: string | null
   onDismissJumpFail?: () => void
+  jumpDebugLine?: string | null
   roads: RoadNetworkParams
   view: DecayViewParams
   buildings: BuildingParams
@@ -385,13 +387,28 @@ export function DecayShell({
           >
             Jump In
           </button>
+          <button
+            type="button"
+            role="tab"
+            className={viewTab === 'lab' ? 'is-active' : undefined}
+            aria-selected={viewTab === 'lab'}
+            onClick={() => onViewTab('lab')}
+          >
+            Lab
+          </button>
         </div>
       ) : null}
 
       {screen !== 'entry' && viewTab === 'jump' ? (
         <p className="decay-jump-hint" role="status">
-          WASD to move · drag to look · Shift to run · Esc to exit · sidewalks and crossings ·
-          buildings are solid
+          Arrows/WASD walk+turn · Q/E strafe · Shift run · drag look · Esc exit · sidewalks
+          solid
+        </p>
+      ) : null}
+
+      {screen !== 'entry' && viewTab === 'jump' && jumpDebugLine ? (
+        <p className="decay-jump-debug" role="status">
+          {jumpDebugLine}
         </p>
       ) : null}
 
@@ -468,7 +485,7 @@ export function DecayShell({
         </div>
       ) : null}
 
-      {screen === 'phase1' ? (
+      {screen === 'phase1' && viewTab !== 'lab' ? (
         <>
           <aside className="decay-left" aria-label="Timeline">
             <Fold title="Timeline" defaultOpen>
@@ -660,7 +677,7 @@ export function DecayShell({
         </>
       ) : null}
 
-      {screen === 'phase2' ? (
+      {screen === 'phase2' && viewTab !== 'lab' ? (
         <>
           <aside className="decay-left" aria-label="Claim">
             <Fold title="Claim" defaultOpen>
@@ -758,7 +775,7 @@ export function DecayShell({
         </>
       ) : null}
 
-      {screen === 'roads' ? (
+      {screen === 'roads' && viewTab !== 'lab' ? (
         <>
           <aside className="decay-left" aria-label="Road controls">
             <Fold title="Roads" defaultOpen>

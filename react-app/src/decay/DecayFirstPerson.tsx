@@ -1,6 +1,6 @@
 /**
  * DECAY Jump In — first-person walk.
- * A: enter / move / look · B: walkable + collision · C: curb / slope / smooth eye.
+ * Arrows / WASD: forward-back + turn · Q/E strafe · Shift run · drag look.
  */
 
 import { useFrame, useThree } from '@react-three/fiber'
@@ -32,12 +32,14 @@ import {
   JUMP_WALK_RECENTER,
   nearestWalkable,
   sampleWalk,
+  WALK_SIDEWALK,
   walkSpeedMult,
   type WalkableMap,
 } from './walkableMap.ts'
 
 const MOVE_SPEED = 3.4
 const RUN_MULT = 1.85
+const TURN_SPEED = 1.85
 const LOOK_SENS = 0.0022
 const PITCH_LIMIT = Math.PI / 2 - 0.04
 /**
@@ -48,13 +50,17 @@ const JUMP_NEAR = 0.05
 const ORBIT_NEAR = 0.05
 /** Extra clearance vs solids so the near plane can’t cut into façades. */
 const WALL_PAD = 0.12
+/** Snap to sidewalk if stuck in a blocked cell this long. */
+const STUCK_SNAP_SEC = 0.5
 
-/** Movement keys — always `event.code` (layout-independent). */
+/** Movement / look keys — always `event.code` (layout-independent). */
 const MOVE_CODES = new Set([
   'KeyW',
   'KeyA',
   'KeyS',
   'KeyD',
+  'KeyQ',
+  'KeyE',
   'ArrowUp',
   'ArrowDown',
   'ArrowLeft',
@@ -90,6 +96,39 @@ function blurNonTextFocus() {
   el.blur()
 }
 
+function focusCanvas(el: HTMLCanvasElement) {
+  if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0')
+  try {
+    el.focus({ preventScroll: true })
+  } catch {
+    el.focus()
+  }
+}
+
+/** Prefer a sidewalk cell; else any nearest walkable. */
+function snapToWalkable(map: WalkableMap, x: number, z: number): { x: number; z: number } | null {
+  const near = nearestWalkable(map, x, z)
+  if (near && sampleWalk(map, near.x, near.z) === WALK_SIDEWALK) return near
+  const side = firstSidewalkPoint(map)
+  if (side) return side
+  return near
+}
+
+export type JumpDebugInfo = {
+  keys: string
+  x: number
+  z: number
+  walkable: boolean
+  moveX: number
+  moveZ: number
+  /** Desired step before collision (world xz). */
+  wantDx: number
+  wantDz: number
+  /** Applied step after collision. */
+  gotDx: number
+  gotDz: number
+}
+
 type DecayFirstPersonProps = {
   enabled: boolean
   graph: RoadGraph
@@ -103,6 +142,8 @@ type DecayFirstPersonProps = {
   /** Ask parent to rebuild the ~60 m walk/solid window around the player. */
   onWindowFollow?: (x: number, z: number) => void
   onSpawnLog?: (line: string) => void
+  /** Live Jump In debug line (keys / pose / walkable / move). */
+  onDebug?: (info: JumpDebugInfo) => void
 }
 
 function tryMove(
@@ -188,6 +229,7 @@ export function DecayFirstPerson({
   onFail,
   onWindowFollow,
   onSpawnLog,
+  onDebug,
 }: DecayFirstPersonProps) {
   const { camera, gl, controls } = useThree()
   const keys = useRef(new Set<string>())
@@ -212,9 +254,20 @@ export function DecayFirstPerson({
   followRef.current = onWindowFollow
   const failRef = useRef(onFail)
   failRef.current = onFail
+  const exitRef = useRef(onExit)
+  exitRef.current = onExit
+  const debugRef = useRef(onDebug)
+  debugRef.current = onDebug
   const lastFollowAt = useRef(0)
+  const lastDebugAt = useRef(0)
+  const stuckSec = useRef(0)
+  const orbitSaved = useRef<{
+    enableRotate: boolean
+    enablePan: boolean
+    enableZoom: boolean
+  } | null>(null)
 
-  // If the error boundary unmounts us mid-Jump In, still restore near clip.
+  // If the error boundary unmounts us mid-Jump In, still restore near clip / orbit.
   useEffect(() => {
     const persp = camera as PerspectiveCamera
     return () => {
@@ -226,26 +279,41 @@ export function DecayFirstPerson({
       if (document.pointerLockElement === gl.domElement) {
         document.exitPointerLock()
       }
+      const orbit = controls as OrbitControlsImpl | null
+      if (orbit && orbitSaved.current) {
+        orbit.enableRotate = orbitSaved.current.enableRotate
+        orbit.enablePan = orbitSaved.current.enablePan
+        orbit.enableZoom = orbitSaved.current.enableZoom
+        orbitSaved.current = null
+      }
     }
-  }, [camera, gl.domElement])
+  }, [camera, gl.domElement, controls])
 
-  // Enter / exit + near clip
+  // Enter / exit + near clip + orbit pointer off
   useEffect(() => {
     const persp = camera as PerspectiveCamera
+    const orbit = controls as OrbitControlsImpl | null
 
     if (!enabled) {
       const leaving = wasEnabled.current
       wasEnabled.current = false
       placed.current = false
       dragging.current = false
+      stuckSec.current = 0
       spawnRef.current = null
+      keys.current.clear()
       if (document.pointerLockElement === gl.domElement) {
         document.exitPointerLock()
+      }
+      if (orbit && orbitSaved.current) {
+        orbit.enableRotate = orbitSaved.current.enableRotate
+        orbit.enablePan = orbitSaved.current.enablePan
+        orbit.enableZoom = orbitSaved.current.enableZoom
+        orbitSaved.current = null
       }
       if (leaving) {
         persp.near = savedNear.current
         persp.updateProjectionMatrix()
-        const orbit = controls as OrbitControlsImpl | null
         if (orbit) {
           const dir = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
           dir.y = 0
@@ -263,10 +331,22 @@ export function DecayFirstPerson({
 
     wasEnabled.current = true
 
-    // Steal focus from panel sliders/tabs.
-    // Do NOT call OrbitControls.stopListenToKeyEvents — with keyEvents={false}
-    // _domElementKeyEvents is null and drei throws (black screen).
+    // Steal focus from panel sliders/tabs; put it on the 3D canvas.
     blurNonTextFocus()
+    focusCanvas(gl.domElement)
+
+    // Kill OrbitControls pointer handling while walking (keyboard already keyEvents={false}).
+    if (orbit && !orbitSaved.current) {
+      orbitSaved.current = {
+        enableRotate: orbit.enableRotate,
+        enablePan: orbit.enablePan,
+        enableZoom: orbit.enableZoom,
+      }
+      orbit.enableRotate = false
+      orbit.enablePan = false
+      orbit.enableZoom = false
+      orbit.enabled = false
+    }
 
     if (placed.current) return
     placed.current = true
@@ -281,28 +361,17 @@ export function DecayFirstPerson({
 
       if (spawn && map) {
         if (!isWalkable(sampleWalk(map, spawn.x, spawn.z))) {
-          const near = nearestWalkable(map, spawn.x, spawn.z)
+          const near = snapToWalkable(map, spawn.x, spawn.z)
           if (near) {
             spawn = {
               ...spawn,
               x: near.x,
               z: near.z,
               y: eyeY(heightRef.current, near.x, near.z, JUMP_CURB),
-              rule: `${spawn.rule} · snapped to walkable`,
+              rule: `${spawn.rule} · snapped to walkable sidewalk`,
             }
           } else {
-            const fallback = firstSidewalkPoint(map)
-            if (fallback) {
-              spawn = {
-                ...spawn,
-                x: fallback.x,
-                z: fallback.z,
-                y: eyeY(heightRef.current, fallback.x, fallback.z, JUMP_CURB),
-                rule: `${spawn.rule} · fallback sidewalk`,
-              }
-            } else {
-              spawn = null
-            }
+            spawn = null
           }
         }
       } else if (!spawn && map) {
@@ -345,6 +414,19 @@ export function DecayFirstPerson({
         }
       }
 
+      // After solid slide, ensure sidewalk again.
+      if (map && !isWalkable(sampleWalk(map, spawn.x, spawn.z))) {
+        const near = snapToWalkable(map, spawn.x, spawn.z)
+        if (near) {
+          spawn = {
+            ...spawn,
+            x: near.x,
+            z: near.z,
+            y: eyeY(heightRef.current, near.x, near.z, JUMP_CURB),
+          }
+        }
+      }
+
       if (
         !Number.isFinite(spawn.x) ||
         !Number.isFinite(spawn.y) ||
@@ -356,6 +438,7 @@ export function DecayFirstPerson({
 
       spawnRef.current = spawn
       curbRef.current = JUMP_CURB
+      stuckSec.current = 0
       camera.position.set(spawn.x, spawn.y, spawn.z)
       camera.rotation.order = 'YXZ'
       euler.current.set(0, spawn.yaw, 0)
@@ -365,6 +448,7 @@ export function DecayFirstPerson({
       onSpawnLog?.(
         `[jump] surface eye ${JUMP_EYE_HEIGHT.toFixed(2)} · curb ${JUMP_CURB.toFixed(2)} · near ${JUMP_NEAR}`,
       )
+      focusCanvas(gl.domElement)
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
       console.error('[jump] Jump In failed:', err)
@@ -376,23 +460,23 @@ export function DecayFirstPerson({
     }
   }, [enabled, camera, controls, gl.domElement, graph, roads, onSpawnLog])
 
-  // Keyboard + drag look
+  // Keyboard + drag look — listeners stay stable (callbacks via refs).
   useEffect(() => {
     if (!enabled) return
 
     const el = gl.domElement
+    focusCanvas(el)
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // Leave typing alone in text fields.
       if (isTextField(document.activeElement)) return
 
       if (event.code === 'Escape') {
         event.preventDefault()
-        onExit()
+        exitRef.current()
         return
       }
       if (!MOVE_CODES.has(event.code)) return
-      // Stop page/panel scroll and range-slider nudges.
+      // Stop page/panel scroll and range-slider nudges (arrows especially).
       event.preventDefault()
       keys.current.add(event.code)
     }
@@ -406,6 +490,7 @@ export function DecayFirstPerson({
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return
       blurNonTextFocus()
+      focusCanvas(el)
       dragging.current = true
       el.setPointerCapture?.(event.pointerId)
     }
@@ -445,19 +530,29 @@ export function DecayFirstPerson({
       el.removeEventListener('lostpointercapture', onPointerUp)
       keys.current.clear()
     }
-  }, [enabled, camera, gl.domElement, onExit])
+  }, [enabled, camera, gl.domElement])
 
   useFrame((_, delta) => {
     if (!enabled) return
 
     const dt = Math.min(delta, 0.05)
     const pressed = keys.current
-    let moveX = 0
-    let moveZ = 0
-    if (pressed.has('KeyW') || pressed.has('ArrowUp')) moveZ += 1
-    if (pressed.has('KeyS') || pressed.has('ArrowDown')) moveZ -= 1
-    if (pressed.has('KeyA') || pressed.has('ArrowLeft')) moveX -= 1
-    if (pressed.has('KeyD') || pressed.has('ArrowRight')) moveX += 1
+
+    // Turn in place (A/D + Left/Right).
+    let turn = 0
+    if (pressed.has('KeyA') || pressed.has('ArrowLeft')) turn += 1
+    if (pressed.has('KeyD') || pressed.has('ArrowRight')) turn -= 1
+    if (turn !== 0) {
+      euler.current.y += turn * TURN_SPEED * dt
+    }
+
+    // Walk forward/back + Q/E strafe.
+    let walk = 0
+    let strafe = 0
+    if (pressed.has('KeyW') || pressed.has('ArrowUp')) walk += 1
+    if (pressed.has('KeyS') || pressed.has('ArrowDown')) walk -= 1
+    if (pressed.has('KeyQ')) strafe -= 1
+    if (pressed.has('KeyE')) strafe += 1
 
     const running = pressed.has('ShiftLeft') || pressed.has('ShiftRight')
     const x0 = camera.position.x
@@ -467,7 +562,16 @@ export function DecayFirstPerson({
     const surfMult = walkSpeedMult(surface)
     const speed = MOVE_SPEED * (running ? RUN_MULT : 1) * (surfMult > 0 ? surfMult : 1)
 
-    if (moveX !== 0 || moveZ !== 0) {
+    // Debug move vector = walk/strafe intent (not the old strafe-A/D scheme).
+    const moveX = strafe
+    const moveZ = walk
+
+    let wantDx = 0
+    let wantDz = 0
+    let gotDx = 0
+    let gotDz = 0
+
+    if (walk !== 0 || strafe !== 0) {
       forward.current.set(0, 0, -1).applyEuler(euler.current)
       forward.current.y = 0
       if (forward.current.lengthSq() > 1e-6) forward.current.normalize()
@@ -475,12 +579,14 @@ export function DecayFirstPerson({
       right.current.y = 0
       if (right.current.lengthSq() > 1e-6) right.current.normalize()
 
-      const len = Math.hypot(moveX, moveZ) || 1
+      const len = Math.hypot(walk, strafe) || 1
       const step = speed * dt
       const x1 =
-        x0 + right.current.x * (moveX / len) * step + forward.current.x * (moveZ / len) * step
+        x0 + right.current.x * (strafe / len) * step + forward.current.x * (walk / len) * step
       const z1 =
-        z0 + right.current.z * (moveX / len) * step + forward.current.z * (moveZ / len) * step
+        z0 + right.current.z * (strafe / len) * step + forward.current.z * (walk / len) * step
+      wantDx = x1 - x0
+      wantDz = z1 - z0
       const next = tryMove(
         walkRef.current,
         solidRef.current,
@@ -493,25 +599,30 @@ export function DecayFirstPerson({
       )
       camera.position.x = next.x
       camera.position.z = next.z
-    } else if (walkRef.current && !isWalkable(sampleWalk(walkRef.current, x0, z0))) {
-      const near = nearestWalkable(walkRef.current, x0, z0)
-      if (near) {
-        const next = tryMove(
-          walkRef.current,
-          solidRef.current,
-          hAt,
-          slopeLimitRef.current,
-          x0,
-          z0,
-          near.x,
-          near.z,
-        )
-        camera.position.x = next.x
-        camera.position.z = next.z
-      }
+      gotDx = next.x - x0
+      gotDz = next.z - z0
     }
 
-    // Eased curb (sidewalk ↔ road) + smooth eye follow
+    // Stuck in a blocked cell → accumulate time, then snap to sidewalk.
+    const map = walkRef.current
+    const walkOk = map ? isWalkable(sampleWalk(map, camera.position.x, camera.position.z)) : true
+    if (map && !walkOk) {
+      stuckSec.current += dt
+      if (stuckSec.current >= STUCK_SNAP_SEC) {
+        const near = snapToWalkable(map, camera.position.x, camera.position.z)
+        if (near) {
+          camera.position.x = near.x
+          camera.position.z = near.z
+          gotDx = near.x - x0
+          gotDz = near.z - z0
+        }
+        stuckSec.current = 0
+      }
+    } else {
+      stuckSec.current = 0
+    }
+
+    // Eased curb (sidewalk ↔ road) + smooth eye follow (Y only — never overwrites xz).
     const targetCurb = curbTargetAt(walkRef.current, camera.position.x, camera.position.z)
     const curbT = Math.min(1, dt * CURB_EASE)
     curbRef.current += (targetCurb - curbRef.current) * curbT
@@ -520,7 +631,6 @@ export function DecayFirstPerson({
     camera.position.y += (wantY - camera.position.y) * eyeT
 
     // Recenter the ~60 m walk/solid window when the player drifts.
-    const map = walkRef.current
     if (map && followRef.current) {
       const dx = camera.position.x - map.originX
       const dz = camera.position.z - map.originZ
@@ -535,6 +645,31 @@ export function DecayFirstPerson({
 
     camera.rotation.order = 'YXZ'
     camera.rotation.copy(euler.current)
+
+    // Debug line — throttle DOM updates (~10 Hz).
+    if (debugRef.current) {
+      const now = performance.now()
+      if (now - lastDebugAt.current > 100) {
+        lastDebugAt.current = now
+        const keyList = [...pressed].sort().join('+') || '(none)'
+        const info: JumpDebugInfo = {
+          keys: keyList,
+          x: camera.position.x,
+          z: camera.position.z,
+          walkable: map
+            ? isWalkable(sampleWalk(map, camera.position.x, camera.position.z))
+            : false,
+          moveX,
+          moveZ,
+          wantDx,
+          wantDz,
+          gotDx,
+          gotDz,
+        }
+        debugRef.current(info)
+        ;(window as unknown as { __jumpDebug?: JumpDebugInfo }).__jumpDebug = info
+      }
+    }
   })
 
   return null

@@ -9,7 +9,8 @@
  */
 
 import type { BuildingInstance } from './buildings.ts'
-import { FORM_HEIGHT_RANGES, storiesFromField } from './formHeight.ts'
+import { getBuildingType } from './buildingTypeTable.ts'
+import { storiesFromField } from './formHeight.ts'
 import type { PlotLandUse } from './landUse.ts'
 
 export type HousingKind = 'row' | 'walkup' | 'tenement'
@@ -47,11 +48,6 @@ export type HousingContext = {
   /** Plot id → corner flag from morphology. */
   cornerById?: ReadonlyMap<number, boolean>
 }
-
-const ROW_UNIT_MIN = 2.15
-const ROW_UNIT_MAX = 3.4
-const ROW_GAP = 0.38
-const ROW_YARD_FRAC = 0.38
 
 function clamp(v: number, a: number, b: number) {
   return Math.max(a, Math.min(b, v))
@@ -181,17 +177,26 @@ function massRow(
   cornerPlot: boolean,
   halfExtent: number,
 ): BuildingInstance[] {
-  const frontW = Math.max(ROW_UNIT_MIN * 2, inst.width)
-  const unitW = clamp(frontW / 4.2, ROW_UNIT_MIN, ROW_UNIT_MAX)
-  const n = Math.max(2, Math.min(6, Math.floor((frontW + ROW_GAP) / (unitW + ROW_GAP))))
-  const span = n * unitW + (n - 1) * ROW_GAP
-  const depth = Math.max(2.4, inst.depth * (1 - ROW_YARD_FRAC))
-  const frontShift = (inst.depth - depth) * 0.5
+  const t = getBuildingType('row')
+  const unitMin = t.size.unitMin ?? 2.15
+  const unitMax = t.size.unitMax ?? 3.4
+  const gap = t.size.unitGap ?? 0.38
+  const yardFrac = t.size.yardFrac ?? 0.38
+  const shiftFrac = t.size.frontShiftFrac ?? 0.5
+  const frontW = Math.max(unitMin * 2, inst.width)
+  const unitW = clamp(frontW / 4.2, unitMin, unitMax)
+  const n = Math.max(2, Math.min(6, Math.floor((frontW + gap) / (unitW + gap))))
+  const span = n * unitW + (n - 1) * gap
+  const depth = Math.max(t.size.minDepth, inst.depth * (1 - yardFrac))
+  const frontShift = (inst.depth - depth) * shiftFrac
   void halfExtent
-  const stories = storiesFromField(FORM_HEIGHT_RANGES.row, inst.heightField)
+  const stories = storiesFromField(
+    { min: t.size.storyMin, max: t.size.storyMax },
+    inst.heightField,
+  )
   const out: BuildingInstance[] = []
   for (let i = 0; i < n; i++) {
-    const lx = -span * 0.5 + unitW * 0.5 + i * (unitW + ROW_GAP)
+    const lx = -span * 0.5 + unitW * 0.5 + i * (unitW + gap)
     const p = localToWorld(inst.x, inst.z, inst.yaw, lx, -frontShift)
     const end = i === 0 || i === n - 1
     out.push(
@@ -223,10 +228,14 @@ function massWalkup(
   cornerPlot: boolean,
 ): BuildingInstance[] {
   void halfExtent
-  const stories = storiesFromField(FORM_HEIGHT_RANGES.walkup, inst.heightField)
-  const width = Math.max(5.5, inst.width * 0.96)
-  const depth = Math.max(3.6, inst.depth * 0.72)
-  const frontShift = (inst.depth - depth) * 0.5
+  const t = getBuildingType('walkup')
+  const stories = storiesFromField(
+    { min: t.size.storyMin, max: t.size.storyMax },
+    inst.heightField,
+  )
+  const width = Math.max(t.size.minWidth, inst.width * t.size.widthMult)
+  const depth = Math.max(t.size.minDepth, inst.depth * t.size.depthMult)
+  const frontShift = (inst.depth - depth) * (t.size.frontShiftFrac ?? 0.5)
   const p = localToWorld(inst.x, inst.z, inst.yaw, 0, -frontShift)
   return [
     cloneShell(inst, {
@@ -251,10 +260,14 @@ function massTenement(
   halfExtent: number,
 ): BuildingInstance[] {
   void halfExtent
-  const stories = storiesFromField(FORM_HEIGHT_RANGES.tenement, inst.heightField)
-  const width = Math.max(5.5, inst.width * 0.95)
-  const depth = Math.max(4.2, inst.depth * 0.82)
-  const frontShift = (inst.depth - depth) * 0.25
+  const t = getBuildingType('tenement')
+  const stories = storiesFromField(
+    { min: t.size.storyMin, max: t.size.storyMax },
+    inst.heightField,
+  )
+  const width = Math.max(t.size.minWidth, inst.width * t.size.widthMult)
+  const depth = Math.max(t.size.minDepth, inst.depth * t.size.depthMult)
+  const frontShift = (inst.depth - depth) * (t.size.frontShiftFrac ?? 0.25)
   const p = localToWorld(inst.x, inst.z, inst.yaw, 0, -frontShift)
   return [
     cloneShell(inst, {

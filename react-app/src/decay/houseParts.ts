@@ -54,38 +54,50 @@ export function partWallMass(
 }
 
 /** Pitched gable roof with overhang (ridge along X). */
-export function partPitchedGable(stories: number, overhang = 0.06): BufferGeometry[] {
+export function partPitchedGable(
+  stories: number,
+  overhang = 0.06,
+  roofHex: string = HOUSE_BEFORE.roof,
+  wallHex: string = HOUSE_BEFORE.brick,
+  pitch = 0.42,
+): BufferGeometry[] {
   const y0 = stories
-  const rise = 0.42
+  const rise = Math.max(0.12, pitch)
   const w = 1 + overhang * 2
   const slabL = new BoxGeometry(w, 0.07, 0.62)
-  paint(slabL, HOUSE_BEFORE.roof)
+  paint(slabL, roofHex)
   slabL.applyMatrix4(
     new Matrix4()
-      .makeTranslation(0, y0 + 0.22, -0.22)
+      .makeTranslation(0, y0 + rise * 0.52, -0.22)
       .multiply(new Matrix4().makeRotationX(0.48)),
   )
   const slabR = new BoxGeometry(w, 0.07, 0.62)
-  paint(slabR, HOUSE_BEFORE.roof)
+  paint(slabR, roofHex)
   slabR.applyMatrix4(
     new Matrix4()
-      .makeTranslation(0, y0 + 0.22, 0.22)
+      .makeTranslation(0, y0 + rise * 0.52, 0.22)
       .multiply(new Matrix4().makeRotationX(-0.48)),
   )
-  const gableF = partBox(0.06, rise, 0.95, HOUSE_BEFORE.brick, 0.47, y0 + rise * 0.45, 0)
-  const gableB = partBox(0.06, rise, 0.95, HOUSE_BEFORE.brick, -0.47, y0 + rise * 0.45, 0)
+  const gableF = partBox(0.06, rise, 0.95, wallHex, 0.47, y0 + rise * 0.45, 0)
+  const gableB = partBox(0.06, rise, 0.95, wallHex, -0.47, y0 + rise * 0.45, 0)
   return [slabL, slabR, gableF, gableB]
 }
 
 /** Flat roof with cornice ring + parapet. */
-export function partFlatRoofCornice(stories: number): BufferGeometry[] {
+export function partFlatRoofCornice(
+  stories: number,
+  parapetHeight = 0.18,
+  corniceHex: string = HOUSE_BEFORE.cornice,
+  parapetHex: string = HOUSE_BEFORE.parapet,
+): BufferGeometry[] {
   const y = stories
+  const ph = Math.max(0.06, parapetHeight)
   const deck = partBox(1.02, 0.06, 1.02, HOUSE_BEFORE.concrete, 0, y + 0.03, 0)
-  const cornice = partBox(1.12, 0.08, 1.12, HOUSE_BEFORE.cornice, 0, y + 0.1, 0)
-  const parapetN = partBox(1.08, 0.18, 0.06, HOUSE_BEFORE.parapet, 0, y + 0.2, -0.51)
-  const parapetS = partBox(1.08, 0.18, 0.06, HOUSE_BEFORE.parapet, 0, y + 0.2, 0.51)
-  const parapetE = partBox(0.06, 0.18, 0.96, HOUSE_BEFORE.parapet, 0.51, y + 0.2, 0)
-  const parapetW = partBox(0.06, 0.18, 0.96, HOUSE_BEFORE.parapet, -0.51, y + 0.2, 0)
+  const cornice = partBox(1.12, 0.08, 1.12, corniceHex, 0, y + 0.1, 0)
+  const parapetN = partBox(1.08, ph, 0.06, parapetHex, 0, y + 0.1 + ph * 0.5, -0.51)
+  const parapetS = partBox(1.08, ph, 0.06, parapetHex, 0, y + 0.1 + ph * 0.5, 0.51)
+  const parapetE = partBox(0.06, ph, 0.96, parapetHex, 0.51, y + 0.1 + ph * 0.5, 0)
+  const parapetW = partBox(0.06, ph, 0.96, parapetHex, -0.51, y + 0.1 + ph * 0.5, 0)
   return [deck, cornice, parapetN, parapetS, parapetE, parapetW]
 }
 
@@ -142,12 +154,13 @@ export function fireEscapeUnitSolids(): {
   return []
 }
 
-/** Stoop with 3 steps toward street (−Z). */
-export function partStoop(doorX: number): BufferGeometry[] {
+/** Stoop with N steps toward street (−Z). Default 3 matches city collision. */
+export function partStoop(doorX: number, stepCount = 3): BufferGeometry[] {
   const steps: BufferGeometry[] = []
+  const n = Math.max(0, Math.min(5, Math.floor(stepCount)))
   const stepW = STOOP_COLLISION.sx
   const stepD = 0.14
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < n; i++) {
     steps.push(
       partBox(
         stepW,
@@ -167,10 +180,11 @@ export function partStoop(doorX: number): BufferGeometry[] {
 export function partDoorWithTransom(
   doorX: number,
   doorHex: string,
+  trimHex: string = HOUSE_BEFORE.trim,
 ): BufferGeometry[] {
   const door = partBox(0.2, 0.55, 0.04, doorHex, doorX, 0.35, -0.51)
   const transom = partBox(0.16, 0.12, 0.03, HOUSE_BEFORE.glassAmber, doorX, 0.72, -0.51)
-  const frame = partBox(0.24, 0.72, 0.02, HOUSE_BEFORE.trim, doorX, 0.4, -0.505)
+  const frame = partBox(0.24, 0.72, 0.02, trimHex, doorX, 0.4, -0.505)
   return [frame, door, transom]
 }
 
@@ -180,12 +194,35 @@ export function partWindow(
   y: number,
   w = 0.16,
   h = 0.22,
+  opts?: {
+    trimHex?: string
+    frameDepth?: number
+    sillDepth?: number
+    lintel?: boolean
+  },
 ): BufferGeometry[] {
+  const trimHex = opts?.trimHex ?? HOUSE_BEFORE.trim
+  const frameD = opts?.frameDepth ?? 0.02
+  const sillD = opts?.sillDepth ?? 0.05
+  const withLintel = opts?.lintel !== false
   const glass = partBox(w, h, 0.03, HOUSE_BEFORE.glassAmber, x, y, -0.51)
-  const frame = partBox(w + 0.04, h + 0.04, 0.02, HOUSE_BEFORE.trim, x, y, -0.505)
-  const sill = partBox(w + 0.06, 0.03, 0.05, HOUSE_BEFORE.concrete, x, y - h * 0.5 - 0.02, -0.52)
-  const lintel = partBox(w + 0.06, 0.03, 0.04, HOUSE_BEFORE.cornice, x, y + h * 0.5 + 0.02, -0.515)
-  return [frame, glass, sill, lintel]
+  const frame = partBox(w + 0.04, h + 0.04, frameD, trimHex, x, y, -0.505)
+  const sill = partBox(
+    w + 0.06,
+    0.03,
+    Math.max(0.02, sillD),
+    HOUSE_BEFORE.concrete,
+    x,
+    y - h * 0.5 - 0.02,
+    -0.52,
+  )
+  const out = [frame, glass, sill]
+  if (withLintel) {
+    out.push(
+      partBox(w + 0.06, 0.03, 0.04, HOUSE_BEFORE.cornice, x, y + h * 0.5 + 0.02, -0.515),
+    )
+  }
+  return out
 }
 
 /** Bay window — shallow protruding box on front. */
@@ -196,12 +233,15 @@ export function partBayWindow(x: number, y: number): BufferGeometry[] {
 }
 
 /** Small porch roof over stoop. */
-export function partPorchRoof(doorX: number): BufferGeometry {
+export function partPorchRoof(
+  doorX: number,
+  roofHex: string = HOUSE_BEFORE.roof,
+): BufferGeometry {
   return partBox(
     PORCH_COLLISION.sx,
     0.05,
     PORCH_COLLISION.sz,
-    HOUSE_BEFORE.roof,
+    roofHex,
     doorX,
     0.95,
     PORCH_COLLISION.lz,

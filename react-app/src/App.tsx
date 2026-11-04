@@ -12,7 +12,9 @@ import WeatheringV3Scene from './weatheringV3/WeatheringV3Scene.tsx'
 import type { TownPhase } from './weatheringV3/timeline.ts'
 import { INTRO_DURATION } from './weatheringV3/timeline.ts'
 import DecayScene from './decay/DecayScene.tsx'
+import type { JumpDebugInfo } from './decay/DecayFirstPerson.tsx'
 import { DecayShell } from './decay/DecayShell.tsx'
+import { BuildingLab } from './decay/lab/BuildingLab.tsx'
 import type { BuildingHoverInfo } from './decay/buildings.ts'
 import type { PlayerClaim } from './decay/claims.ts'
 import type { LandUseViewMode } from './decay/landUse.ts'
@@ -207,6 +209,12 @@ function App() {
   const [decayScreen, setDecayScreen] = useState<DecayScreen>('entry')
   const [decayViewTab, setDecayViewTab] = useState<DecayViewTab>('3d')
   const [decayJumpFail, setDecayJumpFail] = useState<string | null>(null)
+  const [decayJumpDebug, setDecayJumpDebug] = useState<string | null>(null)
+  const onJumpDebug = useCallback((info: JumpDebugInfo) => {
+    setDecayJumpDebug(
+      `keys ${info.keys} · xz ${info.x.toFixed(2)}, ${info.z.toFixed(2)} · walkable ${info.walkable ? 'yes' : 'no'} · move (${info.moveX}, ${info.moveZ}) · want ${info.wantDx.toFixed(3)}, ${info.wantDz.toFixed(3)} · got ${info.gotDx.toFixed(3)}, ${info.gotDz.toFixed(3)}`,
+    )
+  }, [])
   const [decaySelection, setDecaySelection] = useState<DecaySelection>({
     draggingId: null,
     selectedId: null,
@@ -366,53 +374,60 @@ function App() {
             onTimelinePlaying={setV3TimelinePlaying}
           />
         ) : mode === 'decay' ? (
-          <DecayScene
-            terrain={decayTerrain}
-            view={decayView}
-            roads={decayRoads}
-            graphReset={decayGraphReset}
-            fields={decayFields}
-            fieldRevision={decayFieldRevision}
-            buildings={decayBuildings}
-            materiality={decayMateriality}
-            timelineT={decayTimelineT}
-            absenceClock={decayAbsenceClock}
-            tintMode={decayTintMode}
-            onRoadLog={setDecayRoadLog}
-            onCensus={setDecayCensus}
-            onFormCensus={(fc) =>
-              setDecayCensus((c) => ({
-                ...c,
-                housingRow: fc.housing.row,
-                housingWalkup: fc.housing.walkup,
-                housingTenement: fc.housing.tenement,
-                industryFactory: fc.industry.factory,
-                industryWarehouse: fc.industry.warehouse,
-                industryHeavy: fc.industry.heavy,
-                industryRail: fc.industry.rail,
-              }))
-            }
-            onSelection={setDecaySelection}
-            onFieldsPainted={() => setDecayFieldRevision((n) => n + 1)}
-            onBuildingHover={onDecayBuildingHover}
-            onAppendLog={appendDecayLog}
-            onStageCensus={setDecayStageCounts}
-            onStageSeries={setDecayStageSeries}
-            claims={decayClaims}
-            claimEnabled={decayScreen === 'phase2'}
-            onClaim={onDecayClaim}
-            jumpIn={decayViewTab === 'jump'}
-            onExitJumpIn={() => {
-              setDecayJumpFail(null)
-              setDecayViewTab('3d')
-            }}
-            onJumpFail={(reason) => {
-              console.error('[jump] Jump In failed:', reason)
-              setDecayJumpFail(reason)
-              setDecayViewTab('3d')
-            }}
-            onAppendJumpLog={(line) => appendDecayLog([line])}
-          />
+          decayViewTab === 'lab' && decayScreen !== 'entry' ? (
+            <BuildingLab roads={decayRoads} buildings={decayBuildings} />
+          ) : (
+            <DecayScene
+              terrain={decayTerrain}
+              view={decayView}
+              roads={decayRoads}
+              graphReset={decayGraphReset}
+              fields={decayFields}
+              fieldRevision={decayFieldRevision}
+              buildings={decayBuildings}
+              materiality={decayMateriality}
+              timelineT={decayTimelineT}
+              absenceClock={decayAbsenceClock}
+              tintMode={decayTintMode}
+              onRoadLog={setDecayRoadLog}
+              onCensus={setDecayCensus}
+              onFormCensus={(fc) =>
+                setDecayCensus((c) => ({
+                  ...c,
+                  housingRow: fc.housing.row,
+                  housingWalkup: fc.housing.walkup,
+                  housingTenement: fc.housing.tenement,
+                  industryFactory: fc.industry.factory,
+                  industryWarehouse: fc.industry.warehouse,
+                  industryHeavy: fc.industry.heavy,
+                  industryRail: fc.industry.rail,
+                }))
+              }
+              onSelection={setDecaySelection}
+              onFieldsPainted={() => setDecayFieldRevision((n) => n + 1)}
+              onBuildingHover={onDecayBuildingHover}
+              onAppendLog={appendDecayLog}
+              onStageCensus={setDecayStageCounts}
+              onStageSeries={setDecayStageSeries}
+              claims={decayClaims}
+              claimEnabled={decayScreen === 'phase2'}
+              onClaim={onDecayClaim}
+              jumpIn={decayViewTab === 'jump'}
+              onExitJumpIn={() => {
+                setDecayJumpFail(null)
+                setDecayJumpDebug(null)
+                setDecayViewTab('3d')
+              }}
+              onJumpFail={(reason) => {
+                console.error('[jump] Jump In failed:', reason)
+                setDecayJumpFail(reason)
+                setDecayJumpDebug(null)
+                setDecayViewTab('3d')
+              }}
+              onAppendJumpLog={(line) => appendDecayLog([line])}
+              onJumpDebug={onJumpDebug}
+            />
+          )
         ) : showSim ? (
           <HeightMapView
             mapRef={mapRef}
@@ -438,6 +453,7 @@ function App() {
           }}
           jumpFailMessage={decayJumpFail}
           onDismissJumpFail={() => setDecayJumpFail(null)}
+          jumpDebugLine={decayViewTab === 'jump' ? decayJumpDebug : null}
           roads={decayRoads}
           view={decayView}
           buildings={decayBuildings}

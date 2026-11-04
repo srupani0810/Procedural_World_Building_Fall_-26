@@ -6,8 +6,9 @@
 
 import { BufferGeometry } from 'three'
 import type { BuildingInstance } from './buildings.ts'
+import { getBuildingType } from './buildingTypeTable.ts'
 import { COMMERCE_BEFORE } from './commercePalette.ts'
-import { FORM_HEIGHT_RANGES, storiesFromField } from './formHeight.ts'
+import { storiesFromField } from './formHeight.ts'
 import {
   COM_FLUSH,
   comAwning,
@@ -53,10 +54,18 @@ export function commerceVariantFromSeed(
   heightField: number,
 ): CommerceVariant {
   const seed = plotId * 29 + Math.floor(rim * 80)
-  const brickToneIndex = pickIndex(seed + 3, COMMERCE_BEFORE.bricks.length)
-  const awningToneIndex = pickIndex(seed + 7, COMMERCE_BEFORE.awnings.length)
+  const typeId = corner ? 'cornerShop' : 'mainBlock'
+  const t = getBuildingType(typeId)
+  const brickToneIndex = pickIndex(seed + 3, t.colors.wallTones.length)
+  const awningToneIndex = pickIndex(
+    seed + 7,
+    Math.max(1, t.colors.awningTones.length),
+  )
   if (corner) {
-    const floors = storiesFromField(FORM_HEIGHT_RANGES.cornerShop, heightField)
+    const floors = storiesFromField(
+      { min: t.size.storyMin, max: t.size.storyMax },
+      heightField,
+    )
     return {
       kind: 'cornerShop',
       heightH: floors,
@@ -66,7 +75,10 @@ export function commerceVariantFromSeed(
     }
   }
 
-  const floors = storiesFromField(FORM_HEIGHT_RANGES.mainBlock, heightField)
+  const floors = storiesFromField(
+    { min: t.size.storyMin, max: t.size.storyMax },
+    heightField,
+  )
   // Ground floor reads 1.3H when floors ≥ 2; single-story block stays 1H.
   const heightH = floors <= 1 ? 1 : 1.3 + (floors - 1)
   return {
@@ -101,32 +113,42 @@ export function commerceVariantFromInstance(
 
 function buildCornerShop(v: CommerceVariant): BufferGeometry {
   const parts: BufferGeometry[] = []
-  const brick = COMMERCE_BEFORE.bricks[v.brickToneIndex]!
-  const awning = COMMERCE_BEFORE.awnings[v.awningToneIndex]!
+  const t = getBuildingType('cornerShop')
+  const brick = t.colors.wallTones[v.brickToneIndex] ?? t.colors.wall
+  const awning =
+    t.colors.awningTones[v.awningToneIndex] ?? t.colors.awningTones[0] ?? brick
   const top = v.heightH
-  const doorHex = COMMERCE_BEFORE.awnings[pickIndex(v.brickToneIndex + 11, COMMERCE_BEFORE.awnings.length)]!
+  const doorHex =
+    t.colors.doorTones[
+      pickIndex(v.brickToneIndex + 11, Math.max(1, t.colors.doorTones.length))
+    ] ?? awning
 
   parts.push(comWallMass(0.3, top, brick))
   parts.push(comBaseBand(COMMERCE_BEFORE.base))
   // Shopfront wraps −Z and −X toward the 45° corner.
-  const paneH = Math.min(0.55, top - 0.38)
+  const cols = Math.max(1, t.windows.columns)
+  const paneH = Math.min(t.windows.sizeH || 0.55, top - 0.38)
   const paneY = 0.3 + paneH * 0.5 + COM_FLUSH
-  parts.push(...comShopfrontPanes('front', paneY, paneH, 3))
-  parts.push(...comShopfrontPanes('side', paneY, paneH, 3))
+  parts.push(...comShopfrontPanes('front', paneY, paneH, cols))
+  parts.push(...comShopfrontPanes('side', paneY, paneH, cols))
   parts.push(...comCornerEntrance45(doorHex, paneH + 0.1))
   const awningY = 0.3 + paneH + 0.08
-  parts.push(comAwning('front', awningY, awning, 0.72))
-  parts.push(comAwning('side', awningY, awning, 0.72))
+  if (t.entrance.awning) {
+    parts.push(comAwning('front', awningY, awning, 0.72))
+    parts.push(comAwning('side', awningY, awning, 0.72))
+  }
   parts.push(comSignBand('front', awningY + 0.12, 0.8))
   parts.push(comSignBand('side', awningY + 0.12, 0.8))
-  parts.push(...comCorniceRoof(top))
+  if (t.roof.kind === 'flatCornice') parts.push(...comCorniceRoof(top))
   return mergeComParts(parts)
 }
 
 function buildMainBlock(v: CommerceVariant): BufferGeometry {
   const parts: BufferGeometry[] = []
-  const brick = COMMERCE_BEFORE.bricks[v.brickToneIndex]!
-  const awning = COMMERCE_BEFORE.awnings[v.awningToneIndex]!
+  const t = getBuildingType('mainBlock')
+  const brick = t.colors.wallTones[v.brickToneIndex] ?? t.colors.wall
+  const awning =
+    t.colors.awningTones[v.awningToneIndex] ?? t.colors.awningTones[0] ?? brick
   const groundTop = 1.3
   const top = v.heightH
 
@@ -135,8 +157,11 @@ function buildMainBlock(v: CommerceVariant): BufferGeometry {
   // Ground shopfronts + awnings
   const paneH = 0.7
   const paneY = 0.3 + paneH * 0.5
-  parts.push(...comShopfrontPanes('front', paneY, paneH, 4))
-  parts.push(comAwning('front', groundTop - 0.22, awning, 0.88))
+  const groundCols = Math.max(1, t.windows.columns)
+  parts.push(...comShopfrontPanes('front', paneY, paneH, groundCols))
+  if (t.entrance.awning) {
+    parts.push(comAwning('front', groundTop - 0.22, awning, 0.88))
+  }
   parts.push(comSignBand('front', groundTop - 0.08, 0.92))
   parts.push(comStoneBand(groundTop + 0.04))
 
@@ -150,7 +175,7 @@ function buildMainBlock(v: CommerceVariant): BufferGeometry {
     for (const x of cols) parts.push(...comUpperWindow(x, y))
   }
 
-  parts.push(...comCorniceRoof(top))
+  if (t.roof.kind === 'flatCornice') parts.push(...comCorniceRoof(top))
   return mergeComParts(parts)
 }
 
@@ -185,8 +210,9 @@ export function massCommerce(
     corner,
     inst.heightField,
   )
-  const width = Math.max(4.2, inst.width * 0.95)
-  const depth = Math.max(3.6, inst.depth * 0.9)
+  const t = getBuildingType(variant.kind)
+  const width = Math.max(t.size.minWidth, inst.width * t.size.widthMult)
+  const depth = Math.max(t.size.minDepth, inst.depth * t.size.depthMult)
   return [
     {
       ...inst,

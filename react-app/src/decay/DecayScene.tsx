@@ -12,6 +12,7 @@ import type { FieldMaps } from './fields.ts'
 import type { LandUseViewMode } from './landUse.ts'
 import type { MaterialityParams } from './materiality.ts'
 import { DecayFog, DecaySky, StreamedNoiseGround } from './noiseGround.tsx'
+import type { JumpDebugInfo } from './DecayFirstPerson.tsx'
 import { RoadNetwork } from './RoadNetwork.tsx'
 import {
   DECAY_SKY,
@@ -65,6 +66,7 @@ export type DecaySceneProps = {
   onExitJumpIn?: () => void
   onJumpFail?: (reason: string) => void
   onAppendJumpLog?: (line: string) => void
+  onJumpDebug?: (info: JumpDebugInfo) => void
 }
 
 export default function DecayScene({
@@ -95,6 +97,7 @@ export default function DecayScene({
   onExitJumpIn,
   onJumpFail,
   onAppendJumpLog,
+  onJumpDebug,
 }: DecaySceneProps) {
   const graphKey = [
     graphReset,
@@ -163,10 +166,14 @@ export default function DecayScene({
         onExitJumpIn={onExitJumpIn}
         onJumpFail={onJumpFail}
         onAppendJumpLog={onAppendJumpLog}
+        onJumpDebug={onJumpDebug}
       />
       <OrbitControls
         makeDefault
         enabled={!jumpIn}
+        enableRotate={!jumpIn}
+        enablePan={!jumpIn}
+        enableZoom={!jumpIn}
         // Arrow keys are for Jump In walk — never pan the orbit camera with them here.
         keyEvents={false}
         target={[0, 2, 0]}

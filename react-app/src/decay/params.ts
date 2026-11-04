@@ -44,7 +44,7 @@ export const DECAY_MORPH = {
 } as const
 
 export type DecayScreen = 'entry' | 'phase1' | 'phase2' | 'roads'
-export type DecayViewTab = '3d' | '2d' | 'jump'
+export type DecayViewTab = '3d' | '2d' | 'jump' | 'lab'
 export type RoadEditTool = 'edit' | 'connect' | 'delete'
 export type DecayLogFilter = 'all' | 'stage' | 'rule' | 'glass' | 'lamp'
 export type RoadTier = 'main' | 'collector' | 'local'
