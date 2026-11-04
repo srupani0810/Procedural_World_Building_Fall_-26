@@ -268,3 +268,9 @@ export function buildLabRowHouseGeometry(
 ): BufferGeometry {
   return buildRowHouseGeometry(v, params)
 }
+
+/** Clear city/Lab shared row cache after Lab Apply so meshes rebuild from the table. */
+export function clearRowHouseGeoCache(): void {
+  for (const g of geoCache.values()) g.dispose()
+  geoCache.clear()
+}

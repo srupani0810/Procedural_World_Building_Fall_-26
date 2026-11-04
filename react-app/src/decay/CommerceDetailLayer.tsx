@@ -13,6 +13,7 @@ import {
   commerceVariantFromInstance,
   type CommerceVariant,
 } from './commerceForms.ts'
+import { timedRebuild } from './debug/debugRuntime.ts'
 
 type Place = {
   inst: BuildingInstance
@@ -80,7 +81,10 @@ function CommerceArchetypeMesh({ places }: { places: Place[] }) {
   const mesh = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const geo: BufferGeometry = useMemo(
-    () => commerceGeometryCached(places[0]!.variant),
+    () =>
+      timedRebuild('commerce mesh', `archetype ${places[0]!.key}`, () =>
+        commerceGeometryCached(places[0]!.variant),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [places[0]!.key],
   )

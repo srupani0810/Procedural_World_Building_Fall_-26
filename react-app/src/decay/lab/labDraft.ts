@@ -1,14 +1,16 @@
 /**
- * Building Lab draft state — local only; never writes buildingTypeTable (city).
+ * Building Lab draft state — local only until Apply writes buildingTypeTable.
  */
 
 import {
   BUILDING_TYPE_DEFAULTS,
+  buildingTypeFingerprint,
   cloneBuildingType,
+  getBuildingType,
   type BuildingFormId,
   type BuildingTypeParams,
 } from '../buildingTypeTable.ts'
-import type { RowVariant } from '../rowHouseForm.ts'
+import { rowVariantFromSeed, type RowVariant } from '../rowHouseForm.ts'
 
 export type LabPreview = {
   stories: 2 | 3 | 4
@@ -17,24 +19,68 @@ export type LabPreview = {
   windows: RowVariant['windows']
   corner: boolean
   chimneySide: -1 | 1
+  /** 0…5 — position along a 6-unit block (variant strip). */
+  lotPosition: number
 }
+
+export const LAB_VARIANT_COUNT = 6
+/** Stable plot id for Lab strip seeds (block-position rule only). */
+export const LAB_STRIP_PLOT_ID = 17
 
 export function defaultLabDraft(id: BuildingFormId = 'row'): BuildingTypeParams {
   return cloneBuildingType(BUILDING_TYPE_DEFAULTS[id])
 }
 
+/** Draft seeded from the live city table (Revert draft). */
+export function draftFromLiveTable(id: BuildingFormId = 'row'): BuildingTypeParams {
+  return cloneBuildingType(getBuildingType(id))
+}
+
 export function defaultLabPreview(draft: BuildingTypeParams): LabPreview {
-  const stories = (
-    draft.size.storyMin >= 4 ? 4 : draft.size.storyMin >= 3 ? 3 : 2
-  ) as 2 | 3 | 4
+  return previewFromLotPosition(draft, 0)
+}
+
+export function previewFromVariant(
+  draft: BuildingTypeParams,
+  v: RowVariant,
+  lotPosition: number,
+): LabPreview {
   return {
-    stories,
-    doorSide: -1,
-    doorColorIndex: 0,
-    windows: draft.windows.layouts[0] ?? 'even',
-    corner: false,
-    chimneySide: 1,
+    stories: v.stories,
+    doorSide: v.doorSide,
+    doorColorIndex: v.doorColorIndex,
+    windows: v.windows,
+    corner: v.corner,
+    chimneySide: v.chimneySide,
+    lotPosition: Math.max(0, Math.min(LAB_VARIANT_COUNT - 1, Math.floor(lotPosition))),
   }
+}
+
+/** Deterministic variant from lot position along a 6-unit block. */
+export function labVariantAt(
+  draft: BuildingTypeParams,
+  lotPosition: number,
+): RowVariant {
+  const i = Math.max(0, Math.min(LAB_VARIANT_COUNT - 1, Math.floor(lotPosition)))
+  const baseStories = (
+    draft.size.storyMin >= 4 ? 4 : draft.size.storyMin >= 3 ? 3 : 2
+  ) as number
+  return rowVariantFromSeed(
+    LAB_STRIP_PLOT_ID,
+    i,
+    LAB_VARIANT_COUNT,
+    baseStories,
+    i === 0 || i === LAB_VARIANT_COUNT - 1,
+    draft,
+  )
+}
+
+export function previewFromLotPosition(
+  draft: BuildingTypeParams,
+  lotPosition: number,
+): LabPreview {
+  const v = labVariantAt(draft, lotPosition)
+  return previewFromVariant(draft, v, lotPosition)
 }
 
 export function labRowVariant(
@@ -53,7 +99,7 @@ export function labRowVariant(
       ? 'flat'
       : draft.roof.kind === 'gable'
         ? 'gable'
-        : 'gable'
+        : labVariantAt(draft, preview.lotPosition).roof
   let windows = preview.windows
   if (windows === 'bay' && !draft.windows.bayAllowed) windows = 'even'
   return {
@@ -66,6 +112,13 @@ export function labRowVariant(
     chimneySide: preview.chimneySide,
     roofStep: 0,
   }
+}
+
+export function draftHasChanges(
+  draft: BuildingTypeParams,
+  id: BuildingFormId = 'row',
+): boolean {
+  return buildingTypeFingerprint(draft) !== buildingTypeFingerprint(getBuildingType(id))
 }
 
 /** Plot mass size matching city row unit (one house). */

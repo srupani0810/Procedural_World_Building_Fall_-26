@@ -13,6 +13,7 @@ import type { LandUseViewMode } from './landUse.ts'
 import type { MaterialityParams } from './materiality.ts'
 import { DecayFog, DecaySky, StreamedNoiseGround } from './noiseGround.tsx'
 import type { JumpDebugInfo } from './DecayFirstPerson.tsx'
+import { DebugPerfProbe } from './debug/DebugPerfProbe.tsx'
 import { RoadNetwork } from './RoadNetwork.tsx'
 import {
   DECAY_SKY,
@@ -67,6 +68,10 @@ export type DecaySceneProps = {
   onJumpFail?: (reason: string) => void
   onAppendJumpLog?: (line: string) => void
   onJumpDebug?: (info: JumpDebugInfo) => void
+  /** When true, mount the perf/camera probe (Debug mode). */
+  debugEnabled?: boolean
+  /** Lab Apply — rebuild row house meshes only. */
+  rowMeshRevision?: number
 }
 
 export default function DecayScene({
@@ -98,6 +103,8 @@ export default function DecayScene({
   onJumpFail,
   onAppendJumpLog,
   onJumpDebug,
+  debugEnabled = false,
+  rowMeshRevision = 0,
 }: DecaySceneProps) {
   const graphKey = [
     graphReset,
@@ -167,6 +174,7 @@ export default function DecayScene({
         onJumpFail={onJumpFail}
         onAppendJumpLog={onAppendJumpLog}
         onJumpDebug={onJumpDebug}
+        rowMeshRevision={rowMeshRevision}
       />
       <OrbitControls
         makeDefault
@@ -183,6 +191,7 @@ export default function DecayScene({
         maxDistance={480}
       />
       <DecayViewApi />
+      {debugEnabled ? <DebugPerfProbe /> : null}
     </Canvas>
   )
 }

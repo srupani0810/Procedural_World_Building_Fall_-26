@@ -1,19 +1,22 @@
 /**
- * Building Lab 3D viewer — one plot, sidewalk, street edge, scale figure.
- * Same parts kit / form builder as the city. Orbit + zoom only.
+ * Building Lab 3D viewer — plot, sidewalk, street, scale figure.
+ * Brighter lighting; turntable + reset view. Same parts kit as the city.
  */
 
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import {
   Color,
   DoubleSide,
+  Group,
   MeshStandardMaterial,
   PerspectiveCamera,
   Vector3,
 } from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { BuildingTypeParams } from '../buildingTypeTable.ts'
+import { DebugPerfProbe } from '../debug/DebugPerfProbe.tsx'
 import { buildLabRowHouseGeometry } from '../rowHouseForm.ts'
 import { labPlotMass, labRowVariant, type LabPreview } from './labDraft.ts'
 
@@ -25,16 +28,14 @@ type Props = {
   storyHeight: number
   sidewalkWidth: number
   roadWidth: number
+  debugEnabled?: boolean
+  turntable: boolean
+  viewReset: number
+  onTurntable: (on: boolean) => void
+  onResetView: () => void
 }
 
-function ScalePerson({
-  x,
-  z,
-}: {
-  x: number
-  z: number
-}) {
-  // ~1.7 m figure for scale (city meters ≈ world units).
+function ScalePerson({ x, z }: { x: number; z: number }) {
   return (
     <group position={[x, 0, z]}>
       <mesh position={[0, 0.85, 0]} castShadow>
@@ -63,65 +64,93 @@ function LabHouseMesh({
   storyHeight: number
 }) {
   const variant = useMemo(() => labRowVariant(draft, preview), [draft, preview])
-  const geo = useMemo(() => {
-    return buildLabRowHouseGeometry(variant, draft)
-  }, [variant, draft])
+  const geo = useMemo(() => buildLabRowHouseGeometry(variant, draft), [variant, draft])
 
-  useEffect(() => {
-    return () => {
-      geo.dispose()
-    }
-  }, [geo])
+  useEffect(() => () => geo.dispose(), [geo])
 
   const mat = useMemo(
     () =>
       new MeshStandardMaterial({
         vertexColors: true,
-        roughness: 0.82,
-        metalness: 0.04,
+        roughness: 0.78,
+        metalness: 0.03,
         side: DoubleSide,
       }),
     [],
   )
-
   useEffect(() => () => mat.dispose(), [mat])
 
-  // Unit mesh is 1×stories×1; scale X/Z to plot mass, Y per story.
   return (
     <mesh
       geometry={geo}
       material={mat}
       scale={[width, storyHeight, depth]}
-      position={[0, 0, 0]}
       castShadow
       receiveShadow
     />
   )
 }
 
+/** Frame so the house fills ~60% of the vertical FOV. */
 function FitCamera({
   targetHeight,
   depth,
+  zCenter,
+  viewReset,
 }: {
   targetHeight: number
   depth: number
+  zCenter: number
+  viewReset: number
 }) {
-  const { camera } = useThree()
-  const done = useRef(false)
+  const { camera, controls } = useThree()
   useLayoutEffect(() => {
-    if (done.current) return
-    done.current = true
     const cam = camera as PerspectiveCamera
-    const look = new Vector3(0, targetHeight * 0.45, 0)
-    // Fill the view with the house: distance from height + depth.
-    const span = Math.max(targetHeight, depth) * 1.35
-    cam.position.set(span * 0.85, targetHeight * 0.72, span * 1.05)
+    const look = new Vector3(0, targetHeight * 0.42, zCenter)
+    const vFov = (cam.fov * Math.PI) / 180
+    const span = Math.max(targetHeight, depth * 0.85)
+    const dist = span / (2 * Math.tan(vFov * 0.5) * 0.6)
+    const yaw = 0.55
+    cam.position.set(
+      Math.sin(yaw) * dist,
+      targetHeight * 0.55 + span * 0.12,
+      zCenter + Math.cos(yaw) * dist,
+    )
     cam.near = 0.05
     cam.far = 200
     cam.lookAt(look)
     cam.updateProjectionMatrix()
-  }, [camera, targetHeight, depth])
+    const orbit = controls as OrbitControlsImpl | null
+    if (orbit) {
+      orbit.target.copy(look)
+      orbit.update()
+    }
+  }, [camera, controls, targetHeight, depth, zCenter, viewReset])
   return null
+}
+
+function Turntable({
+  enabled,
+  zCenter,
+  children,
+}: {
+  enabled: boolean
+  zCenter: number
+  children: ReactNode
+}) {
+  const ref = useRef<Group>(null)
+  useFrame((_, dt) => {
+    if (!enabled || !ref.current) return
+    ref.current.rotation.y += dt * 0.35
+  })
+  useEffect(() => {
+    if (!enabled && ref.current) ref.current.rotation.y = 0
+  }, [enabled])
+  return (
+    <group ref={ref} position={[0, 0, zCenter]}>
+      {children}
+    </group>
+  )
 }
 
 function LabScene(props: Props) {
@@ -140,24 +169,26 @@ function LabScene(props: Props) {
   const depth = props.plotDepth
   const walk = props.sidewalkWidth
   const road = Math.max(props.roadWidth, 0.8)
-  // Street along −Z of the plot; plot center at origin; building front-shifted.
   const yard = props.draft.size.yardFrac ?? 0.38
   const frontShift = props.draft.size.frontShiftFrac ?? 0.5
   const massDepth = mass.depth
   const rearYard = depth * yard
   const zCenter =
-    -depth * 0.5 + rearYard + massDepth * 0.5 + (depth - rearYard - massDepth) * (1 - frontShift)
+    -depth * 0.5 +
+    rearYard +
+    massDepth * 0.5 +
+    (depth - rearYard - massDepth) * (1 - frontShift)
 
   const plotMat = useMemo(
-    () => new MeshStandardMaterial({ color: new Color('#3a3630'), roughness: 0.95 }),
+    () => new MeshStandardMaterial({ color: new Color('#d8d0c4'), roughness: 0.92 }),
     [],
   )
   const walkMat = useMemo(
-    () => new MeshStandardMaterial({ color: new Color('#6a6660'), roughness: 0.9 }),
+    () => new MeshStandardMaterial({ color: new Color('#c4beb4'), roughness: 0.88 }),
     [],
   )
   const roadMat = useMemo(
-    () => new MeshStandardMaterial({ color: new Color('#2a2826'), roughness: 0.88 }),
+    () => new MeshStandardMaterial({ color: new Color('#9a9590'), roughness: 0.9 }),
     [],
   )
   useEffect(
@@ -171,18 +202,19 @@ function LabScene(props: Props) {
 
   return (
     <>
-      <color attach="background" args={['#0c0c0c']} />
-      <ambientLight intensity={0.55} />
+      <color attach="background" args={['#e8e4dc']} />
+      <ambientLight intensity={0.72} color="#fff4e8" />
+      <hemisphereLight args={['#f2f0ea', '#c8b8a0', 0.55]} />
       <directionalLight
-        position={[8, 14, 6]}
-        intensity={1.15}
+        position={[7, 12, 5]}
+        intensity={1.35}
+        color="#ffe2b8"
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
       />
-      <hemisphereLight args={['#8a9aaa', '#2a2218', 0.35]} />
+      <directionalLight position={[-5, 4, -3]} intensity={0.35} color="#d0d8e8" />
 
-      {/* Plot pad */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0.01, 0]}
@@ -191,8 +223,6 @@ function LabScene(props: Props) {
       >
         <planeGeometry args={[front, depth]} />
       </mesh>
-
-      {/* Sidewalk strip at street edge (−Z) */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0.025, -depth * 0.5 - walk * 0.5]}
@@ -201,8 +231,6 @@ function LabScene(props: Props) {
       >
         <planeGeometry args={[front + walk * 0.5, walk]} />
       </mesh>
-
-      {/* Street edge */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0.005, -depth * 0.5 - walk - road * 0.5]}
@@ -212,7 +240,7 @@ function LabScene(props: Props) {
         <planeGeometry args={[front + 4, road]} />
       </mesh>
 
-      <group position={[0, 0, zCenter]}>
+      <Turntable enabled={props.turntable} zCenter={zCenter}>
         <LabHouseMesh
           draft={props.draft}
           preview={props.preview}
@@ -220,22 +248,28 @@ function LabScene(props: Props) {
           depth={mass.depth}
           storyHeight={props.storyHeight}
         />
-      </group>
+      </Turntable>
 
       <ScalePerson
         x={mass.width * 0.55 + 0.35}
         z={zCenter - mass.depth * 0.5 - 0.35}
       />
 
-      <FitCamera targetHeight={houseH} depth={mass.depth} />
+      <FitCamera
+        targetHeight={houseH}
+        depth={mass.depth}
+        zCenter={zCenter}
+        viewReset={props.viewReset}
+      />
       <OrbitControls
         makeDefault
         target={[0, houseH * 0.4, zCenter]}
         enablePan
-        minDistance={4}
+        minDistance={3}
         maxDistance={40}
         maxPolarAngle={Math.PI * 0.49}
       />
+      {props.debugEnabled ? <DebugPerfProbe /> : null}
     </>
   )
 }
@@ -243,6 +277,19 @@ function LabScene(props: Props) {
 export function BuildingLabViewer(props: Props) {
   return (
     <div className="decay-lab-viewer">
+      <div className="decay-lab-viewer-tools">
+        <label className="decay-lab-tool-check">
+          <input
+            type="checkbox"
+            checked={props.turntable}
+            onChange={(e) => props.onTurntable(e.target.checked)}
+          />
+          <span>Turntable</span>
+        </label>
+        <button type="button" className="decay-lab-tool-btn" onClick={props.onResetView}>
+          Reset view
+        </button>
+      </div>
       <Canvas
         className="decay-lab-canvas"
         shadows

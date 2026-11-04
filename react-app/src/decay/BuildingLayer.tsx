@@ -35,6 +35,11 @@ import {
 import { HousingDetailLayer } from './HousingDetailLayer.tsx'
 import { CommerceDetailLayer } from './CommerceDetailLayer.tsx'
 import { IndustryDetailLayer } from './IndustryDetailLayer.tsx'
+import {
+  isDebugRuntimeEnabled,
+  recordFormInstances,
+  timedRebuild,
+} from './debug/debugRuntime.ts'
 import type { RoadGraph } from './roadGraph.ts'
 import {
   landUseIndex,
@@ -202,6 +207,7 @@ export function BuildingLayer({
   landUseById,
   graph,
   onFormCensus,
+  rowMeshRevision = 0,
 }: {
   plots: MorphPlot[]
   heightAt: HeightFn
@@ -227,6 +233,8 @@ export function BuildingLayer({
   landUseById?: ReadonlyMap<number, PlotLandUse>
   graph?: RoadGraph
   onFormCensus?: (census: BuildingFormCensus) => void
+  /** Lab Apply — rebuild row house meshes only. */
+  rowMeshRevision?: number
 }) {
   const buildingMesh = useRef<InstancedMesh>(null)
   const foundationMesh = useRef<InstancedMesh>(null)
@@ -266,14 +274,16 @@ export function BuildingLayer({
 
   const seedBuild = useMemo(
     () =>
-      buildBuildings(
-        plots,
-        fields,
-        heightAt,
-        buildings,
-        landUseById,
-        halfExtent,
-        graph,
+      timedRebuild('buildings', 'plots/fields/massing', () =>
+        buildBuildings(
+          plots,
+          fields,
+          heightAt,
+          buildings,
+          landUseById,
+          halfExtent,
+          graph,
+        ),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -305,7 +315,10 @@ export function BuildingLayer({
   )
 
   const claimedInstances = useMemo(
-    () => buildClaimedBuildings(plots, fields, heightAt, buildings, claimById),
+    () =>
+      timedRebuild('claimed buildings', 'claims/fields', () =>
+        buildClaimedBuildings(plots, fields, heightAt, buildings, claimById),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       plots,
@@ -400,6 +413,20 @@ export function BuildingLayer({
   const formLogKey = useRef('')
   useEffect(() => {
     onFormCensusRef.current?.(formCensus)
+    if (isDebugRuntimeEnabled()) {
+      recordFormInstances({
+        row: formCensus.housing.row,
+        walkup: formCensus.housing.walkup,
+        tenement: formCensus.housing.tenement,
+        factory: formCensus.industry.factory,
+        warehouse: formCensus.industry.warehouse,
+        heavy: formCensus.industry.heavy,
+        rail: formCensus.industry.rail,
+        cornerShop: formCensus.commerce.cornerShop,
+        mainBlock: formCensus.commerce.mainBlock,
+        civic: 0,
+      })
+    }
     const key = `${formCensus.housingSummary}|${formCensus.industrySummary}|${formCensus.commerceSummary}`
     if (key === formLogKey.current) return
     formLogKey.current = key
@@ -712,6 +739,7 @@ export function BuildingLayer({
       )
       info.stage = st.stage
       info.age = st.age
+      info.stageRule = st.rule
     } else if (claimEnabledRef.current) {
       const plot = findClaimablePlot(
         plotsRef.current,
@@ -737,6 +765,7 @@ export function BuildingLayer({
         instances={instances}
         halfExtent={halfExtent}
         visible={view.showBuildings && showPartsKit}
+        rowMeshRevision={rowMeshRevision}
       />
       <IndustryDetailLayer
         instances={instances}

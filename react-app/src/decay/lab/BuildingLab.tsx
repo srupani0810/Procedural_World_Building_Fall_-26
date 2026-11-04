@@ -1,27 +1,42 @@
 /**
- * DECAY Building Lab — full-page type studio (Row house only for steps 2–4).
- * Draft edits do not write the live city buildingTypeTable.
+ * DECAY Building Lab — Stage A (Row house).
+ * Draft edits stay local until Apply writes buildingTypeTable.
  */
 
 import { useMemo, useState } from 'react'
 import {
+  applyBuildingType,
   BUILDING_FORM_IDS,
   BUILDING_TYPE_DEFAULTS,
+  buildingTypeChangeSummary,
+  cloneBuildingType,
+  getBuildingType,
+  resetAllBuildingTypes,
+  resetBuildingType,
   type BuildingFormId,
   type BuildingTypeParams,
 } from '../buildingTypeTable.ts'
 import type { DecayBuildingParams, RoadNetworkParams } from '../params.ts'
+import { clearRowHouseGeoCache } from '../rowHouseForm.ts'
 import { BuildingLabSettings } from './BuildingLabSettings.tsx'
 import { BuildingLabViewer } from './BuildingLabViewer.tsx'
+import { LabVariantStrip } from './LabVariantStrip.tsx'
 import {
   defaultLabDraft,
   defaultLabPreview,
+  draftFromLiveTable,
+  draftHasChanges,
+  LAB_VARIANT_COUNT,
+  previewFromLotPosition,
   type LabPreview,
 } from './labDraft.ts'
 
 type Props = {
   roads: RoadNetworkParams
   buildings: DecayBuildingParams
+  debugEnabled?: boolean
+  onAppendLog?: (lines: string[]) => void
+  onRowMeshRebuild?: () => void
 }
 
 type TypeListItem = {
@@ -52,24 +67,81 @@ function typeList(): TypeListItem[] {
       id,
       label: d.label,
       family: d.family,
-      // Steps 2–4: Row house only.
       selectable: id === 'row',
     }
   })
 }
 
-export function BuildingLab({ roads, buildings }: Props) {
+export function BuildingLab({
+  roads,
+  buildings,
+  debugEnabled = false,
+  onAppendLog,
+  onRowMeshRebuild,
+}: Props) {
   const items = useMemo(() => typeList(), [])
   const [selected, setSelected] = useState<BuildingFormId>('row')
-  const [draft, setDraft] = useState<BuildingTypeParams>(() => defaultLabDraft('row'))
-  const [preview, setPreview] = useState<LabPreview>(() =>
-    defaultLabPreview(defaultLabDraft('row')),
+  const [draft, setDraft] = useState<BuildingTypeParams>(() =>
+    draftFromLiveTable('row'),
   )
+  const [preview, setPreview] = useState<LabPreview>(() =>
+    defaultLabPreview(draftFromLiveTable('row')),
+  )
+  const [turntable, setTurntable] = useState(false)
+  const [viewReset, setViewReset] = useState(0)
+  const [dirtyTick, setDirtyTick] = useState(0)
+
+  const dirty = useMemo(() => {
+    void dirtyTick
+    return draftHasChanges(draft, selected)
+  }, [draft, selected, dirtyTick])
+
+  const setLot = (lotPosition: number) => {
+    const i = Math.max(0, Math.min(LAB_VARIANT_COUNT - 1, Math.floor(lotPosition)))
+    setPreview(previewFromLotPosition(draft, i))
+  }
 
   const resetType = () => {
+    resetBuildingType(selected)
     const next = defaultLabDraft(selected)
     setDraft(next)
     setPreview(defaultLabPreview(next))
+    if (selected === 'row') {
+      clearRowHouseGeoCache()
+      onRowMeshRebuild?.()
+    }
+    onAppendLog?.([`[lab] reset type ${selected} → defaults`])
+    setDirtyTick((n) => n + 1)
+  }
+
+  const resetAll = () => {
+    resetAllBuildingTypes()
+    clearRowHouseGeoCache()
+    const next = defaultLabDraft(selected)
+    setDraft(next)
+    setPreview(defaultLabPreview(next))
+    onRowMeshRebuild?.()
+    onAppendLog?.(['[lab] reset all building types → defaults'])
+    setDirtyTick((n) => n + 1)
+  }
+
+  const revertDraft = () => {
+    const next = draftFromLiveTable(selected)
+    setDraft(next)
+    setPreview(previewFromLotPosition(next, preview.lotPosition))
+    setDirtyTick((n) => n + 1)
+  }
+
+  const applyToCity = () => {
+    if (selected !== 'row') return
+    const before = cloneBuildingType(getBuildingType('row'))
+    applyBuildingType('row', draft)
+    clearRowHouseGeoCache()
+    onRowMeshRebuild?.()
+    const after = getBuildingType('row')
+    const summary = buildingTypeChangeSummary(before, after)
+    onAppendLog?.([`[lab] apply row · ${summary}`])
+    setDirtyTick((n) => n + 1)
   }
 
   return (
@@ -87,18 +159,17 @@ export function BuildingLab({ roads, buildings }: Props) {
                     <button
                       type="button"
                       className={
-                        selected === t.id && t.selectable
-                          ? 'is-active'
-                          : undefined
+                        selected === t.id && t.selectable ? 'is-active' : undefined
                       }
                       disabled={!t.selectable}
                       title={t.selectable ? t.label : 'Not built yet'}
                       onClick={() => {
                         if (!t.selectable) return
                         setSelected(t.id)
-                        const next = defaultLabDraft(t.id)
+                        const next = draftFromLiveTable(t.id)
                         setDraft(next)
                         setPreview(defaultLabPreview(next))
+                        setDirtyTick((n) => n + 1)
                       }}
                     >
                       <span className="decay-lab-type-label">{t.label}</span>
@@ -123,30 +194,33 @@ export function BuildingLab({ roads, buildings }: Props) {
           storyHeight={buildings.storyHeight}
           sidewalkWidth={roads.sidewalkWidth}
           roadWidth={roads.localWidth}
+          debugEnabled={debugEnabled}
+          turntable={turntable}
+          viewReset={viewReset}
+          onTurntable={setTurntable}
+          onResetView={() => setViewReset((n) => n + 1)}
         />
-        <div className="decay-lab-variants" aria-label="Variants">
-          {/* Strip chrome for layout (full 6-up comes in a later step). */}
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              className={
-                i === 0
-                  ? 'decay-lab-variant-slot is-active'
-                  : 'decay-lab-variant-slot'
-              }
-            >
-              <span>V{i + 1}</span>
-            </div>
-          ))}
-        </div>
+        <LabVariantStrip
+          draft={draft}
+          preview={preview}
+          plotFrontage={roads.plotFrontage}
+          plotDepth={roads.plotDepth}
+          storyHeight={buildings.storyHeight}
+          onSelect={setLot}
+          onLotPosition={setLot}
+        />
       </div>
 
       <BuildingLabSettings
         draft={draft}
         preview={preview}
+        dirty={dirty}
         onDraft={setDraft}
         onPreview={setPreview}
-        onReset={resetType}
+        onResetType={resetType}
+        onResetAll={resetAll}
+        onApply={applyToCity}
+        onRevert={revertDraft}
       />
     </div>
   )

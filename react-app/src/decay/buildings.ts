@@ -113,9 +113,13 @@ export type BuildingHoverInfo = {
   x: number
   z: number
   stage?: string
+  /** Vacate-onset rule from timeline profile (Debug / hover). */
+  stageRule?: string
   age?: number
   landUse?: LandUse
   landUseRule?: string
+  /** Resolved form id (row / walkup / factory / …). */
+  form?: string
 }
 
 const MIN_FOOT = 1.4
@@ -581,6 +585,12 @@ export function lookupHover(
   const b = buildings[best.i]!
   let foundationHeight = 0
   for (const f of b.foundations) foundationHeight += f.height
+  let form: string | undefined
+  if (b.housingKind) form = b.housingKind
+  else if (b.industryKind) form = b.industryKind === 'heavy' ? 'heavyPlant' : b.industryKind === 'rail' ? 'railYard' : b.industryKind
+  else if (b.commerceKind) form = b.commerceKind
+  else if (b.landUse === 'civic') form = 'civic'
+  else if (b.landUse) form = b.landUse
   return {
     plotId: b.plotId,
     heightField: b.heightField,
@@ -596,5 +606,6 @@ export function lookupHover(
     z: b.z,
     landUse: b.landUse,
     landUseRule: b.landUseRule,
+    form,
   }
 }

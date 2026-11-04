@@ -80,6 +80,10 @@ import {
   buildWalkableMap,
   JUMP_WALK_WINDOW_HALF,
 } from './walkableMap.ts'
+import {
+  recordWalkMapDebug,
+  timedRebuild,
+} from './debug/debugRuntime.ts'
 
 export function makeHeightAt(terrain: TerrainParams): HeightFn {
   const sample = createNoise(terrain)
@@ -590,6 +594,7 @@ export function RoadNetwork({
   onJumpFail,
   onAppendJumpLog,
   onJumpDebug,
+  rowMeshRevision = 0,
 }: {
   terrain: TerrainParams
   roads: RoadNetworkParams
@@ -619,6 +624,7 @@ export function RoadNetwork({
   onJumpFail?: (reason: string) => void
   onAppendJumpLog?: (line: string) => void
   onJumpDebug?: (info: JumpDebugInfo) => void
+  rowMeshRevision?: number
 }) {
   const heightAt = useMemo(() => makeHeightAt(terrain), [terrain])
   const [graph, setGraph] = useState<RoadGraph>(() => emptyGraph())
@@ -749,12 +755,21 @@ export function RoadNetwork({
   }
 
   const runMorph = (g: RoadGraph, extra: string[] = [], replaceLog = false) => {
-    const morph = buildMorphology(g, roadsRef.current, heightRef.current, morphCacheRef.current)
-    morphCacheRef.current = morph.cache
-    const land = assignLandUse(morph.plots, g, roadsRef.current)
-    if (replaceLog) publish([...extra, ...morph.log, land.summary])
-    else publish(appendLog(logRef.current.filter((l) => !l.startsWith('[land]')), [...extra, ...morph.log, land.summary]))
-    report(g, morph, land.counts)
+    const morph = timedRebuild('plots + land use', replaceLog ? 'graph rebuild' : 'morph params / edit', () => {
+      const m = buildMorphology(g, roadsRef.current, heightRef.current, morphCacheRef.current)
+      morphCacheRef.current = m.cache
+      const land = assignLandUse(m.plots, g, roadsRef.current)
+      if (replaceLog) publish([...extra, ...m.log, land.summary])
+      else
+        publish(
+          appendLog(
+            logRef.current.filter((l) => !l.startsWith('[land]')),
+            [...extra, ...m.log, land.summary],
+          ),
+        )
+      report(g, m, land.counts)
+      return m
+    })
     return morph
   }
 
@@ -764,7 +779,9 @@ export function RoadNetwork({
   }
 
   useEffect(() => {
-    const { graph: g, log } = buildGridGraph(roadsRef.current, heightRef.current)
+    const { graph: g, log } = timedRebuild('road graph', 'genKey / lattice', () =>
+      buildGridGraph(roadsRef.current, heightRef.current),
+    )
     morphCacheRef.current = emptyMorphCache()
     setGraph(g)
     setSelected(null)
@@ -892,11 +909,35 @@ export function RoadNetwork({
 
   const walkMap = useMemo(() => {
     if (!jumpIn) return null
-    return buildWalkableMap(graph, roads, morph.plots, landUse.byId, jumpInstances, heightAt, 0.5, {
-      originX: jumpWindow.x,
-      originZ: jumpWindow.z,
-      windowHalf: JUMP_WALK_WINDOW_HALF,
-    })
+    return timedRebuild(
+      'walkable map',
+      'Jump in window',
+      () =>
+        buildWalkableMap(
+          graph,
+          roads,
+          morph.plots,
+          landUse.byId,
+          jumpInstances,
+          heightAt,
+          0.5,
+          {
+            originX: jumpWindow.x,
+            originZ: jumpWindow.z,
+            windowHalf: JUMP_WALK_WINDOW_HALF,
+          },
+        ),
+      (map, buildMs) => {
+        if (!map) return
+        recordWalkMapDebug({
+          cells: map.n * map.n,
+          n: map.n,
+          halfExtent: map.halfExtent,
+          buildMs,
+          at: performance.now(),
+        })
+      },
+    )
   }, [
     jumpIn,
     jumpWindow.x,
@@ -911,11 +952,13 @@ export function RoadNetwork({
 
   const solidGrid = useMemo(() => {
     if (!jumpIn) return null
-    return buildSolidGrid(jumpInstances, roads.halfExtent, 1.0, {
-      originX: jumpWindow.x,
-      originZ: jumpWindow.z,
-      windowHalf: JUMP_WALK_WINDOW_HALF,
-    })
+    return timedRebuild('jump solids', 'Jump in window', () =>
+      buildSolidGrid(jumpInstances, roads.halfExtent, 1.0, {
+        originX: jumpWindow.x,
+        originZ: jumpWindow.z,
+        windowHalf: JUMP_WALK_WINDOW_HALF,
+      }),
+    )
   }, [jumpIn, jumpWindow.x, jumpWindow.z, jumpInstances, roads.halfExtent])
 
   const walkMapLogged = useRef(false)
@@ -1265,6 +1308,7 @@ export function RoadNetwork({
         landUseById={landUse.byId}
         graph={graph}
         onFormCensus={handleFormCensus}
+        rowMeshRevision={rowMeshRevision}
       />
       {drawView.showPlots || drawView.showCornerPlots || drawView.showOpenPlots ? (
         plotBuilt.geo.attributes.position ? (

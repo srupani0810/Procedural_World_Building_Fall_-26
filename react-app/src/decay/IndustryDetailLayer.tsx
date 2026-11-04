@@ -12,6 +12,7 @@ import {
   industryVariantFromSeed,
   type IndustryVariant,
 } from './industryForms.ts'
+import { timedRebuild } from './debug/debugRuntime.ts'
 
 type Place = {
   inst: BuildingInstance
@@ -70,7 +71,10 @@ function IndustryArchetypeMesh({ places }: { places: Place[] }) {
   const mesh = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const geo: BufferGeometry = useMemo(
-    () => industryGeometryCached(places[0]!.variant),
+    () =>
+      timedRebuild('industry mesh', `archetype ${places[0]!.key}`, () =>
+        industryGeometryCached(places[0]!.variant),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [places[0]!.key],
   )

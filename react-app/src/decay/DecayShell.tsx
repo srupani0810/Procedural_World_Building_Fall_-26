@@ -263,6 +263,8 @@ export function DecayShell({
   jumpDebugLine = null,
   roads,
   view,
+  debugEnabled = false,
+  onDebugEnabled,
   buildings,
   materiality,
   census,
@@ -300,6 +302,9 @@ export function DecayShell({
   jumpDebugLine?: string | null
   roads: RoadNetworkParams
   view: DecayViewParams
+  /** When false, no debug collectors / overlays / panels mount. */
+  debugEnabled?: boolean
+  onDebugEnabled?: (on: boolean) => void
   buildings: BuildingParams
   materiality: MaterialityParams
   census: RoadCensus
@@ -1651,6 +1656,17 @@ export function DecayShell({
                   onChange={(e) => onView({ showNodes: e.target.checked })}
                 />
               </label>
+              <label className="decay-check">
+                <span>Debug</span>
+                <input
+                  type="checkbox"
+                  checked={debugEnabled}
+                  onChange={(e) => onDebugEnabled?.(e.target.checked)}
+                />
+              </label>
+              <p className="decay-hint" style={{ marginTop: 4 }}>
+                Backtick (`) toggles Debug. Off = no debug cost. Setting is remembered.
+              </p>
               <Slider
                 label="Fog density"
                 value={view.fogDensity}

@@ -19,6 +19,7 @@ import {
   walkupVariantFromSeed,
   type WalkupVariant,
 } from './walkupHouseForm.ts'
+import { timedRebuild } from './debug/debugRuntime.ts'
 
 type RowPlace = {
   inst: BuildingInstance
@@ -40,10 +41,13 @@ export function HousingDetailLayer({
   instances,
   halfExtent,
   visible,
+  rowMeshRevision = 0,
 }: {
   instances: BuildingInstance[]
   halfExtent: number
   visible: boolean
+  /** Lab Apply bumps this so row meshes rebuild from buildingTypeTable. */
+  rowMeshRevision?: number
 }) {
   const rows = useMemo(() => {
     const out: RowPlace[] = []
@@ -59,11 +63,12 @@ export function HousingDetailLayer({
       out.push({
         inst,
         variant,
-        key: rowArchetypeKey(variant),
+        key: `${rowArchetypeKey(variant)}|r${rowMeshRevision}`,
       })
     }
     return out
-  }, [instances])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instances, rowMeshRevision])
 
   const walkups = useMemo(() => {
     const out: WalkupPlace[] = []
@@ -110,7 +115,7 @@ export function HousingDetailLayer({
   return (
     <group>
       {[...rowsByKey.entries()].map(([key, list]) => (
-        <RowArchetypeMesh key={key} places={list} />
+        <RowArchetypeMesh key={`${key}|${rowMeshRevision}`} places={list} revision={rowMeshRevision} />
       ))}
       {[...walkupsByKey.entries()].map(([key, list]) => (
         <WalkupArchetypeMesh key={key} places={list} />
@@ -119,13 +124,22 @@ export function HousingDetailLayer({
   )
 }
 
-function RowArchetypeMesh({ places }: { places: RowPlace[] }) {
+function RowArchetypeMesh({
+  places,
+  revision,
+}: {
+  places: RowPlace[]
+  revision: number
+}) {
   const mesh = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const geo: BufferGeometry = useMemo(
-    () => rowHouseGeometryCached(places[0]!.variant),
+    () =>
+      timedRebuild('row house mesh', `archetype ${places[0]!.key}`, () =>
+        rowHouseGeometryCached(places[0]!.variant),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [places[0]!.key],
+    [places[0]!.key, revision],
   )
   const cap = Math.max(4, places.length)
 
@@ -163,7 +177,10 @@ function WalkupArchetypeMesh({ places }: { places: WalkupPlace[] }) {
   const mesh = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const geo: BufferGeometry = useMemo(
-    () => walkupHouseGeometryCached(places[0]!.variant),
+    () =>
+      timedRebuild('walk-up mesh', `archetype ${places[0]!.key}`, () =>
+        walkupHouseGeometryCached(places[0]!.variant),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [places[0]!.key],
   )

@@ -734,3 +734,70 @@ export function resetBuildingType(id: BuildingFormId) {
 export function resetAllBuildingTypes() {
   for (const id of BUILDING_FORM_IDS) resetBuildingType(id)
 }
+
+/** Lab Apply — write a draft into the live city table (clone, no shared refs). */
+export function applyBuildingType(id: BuildingFormId, draft: BuildingTypeParams) {
+  buildingTypeTable[id] = cloneBuildingType({ ...draft, id })
+}
+
+/** Stable fingerprint for draft-vs-table / draft-has-changes. */
+export function buildingTypeFingerprint(t: BuildingTypeParams): string {
+  return JSON.stringify({
+    size: t.size,
+    roof: t.roof,
+    windows: {
+      ...t.windows,
+      layouts: [...t.windows.layouts],
+    },
+    entrance: t.entrance,
+    colors: {
+      wall: t.colors.wall,
+      trim: t.colors.trim,
+      roof: t.colors.roof,
+      doorTones: [...t.colors.doorTones],
+      wallTones: [...t.colors.wallTones],
+    },
+  })
+}
+
+/** Short process-log line of what changed (Lab Apply). */
+export function buildingTypeChangeSummary(
+  before: BuildingTypeParams,
+  after: BuildingTypeParams,
+): string {
+  const bits: string[] = []
+  if (before.size.storyMin !== after.size.storyMin || before.size.storyMax !== after.size.storyMax) {
+    bits.push(`stories ${after.size.storyMin}–${after.size.storyMax}`)
+  }
+  if (before.size.widthMult !== after.size.widthMult) bits.push(`width×${after.size.widthMult}`)
+  if (before.size.depthMult !== after.size.depthMult) bits.push(`depth×${after.size.depthMult}`)
+  if (before.roof.kind !== after.roof.kind) bits.push(`roof ${after.roof.kind}`)
+  if (before.roof.pitch !== after.roof.pitch) bits.push(`pitch ${after.roof.pitch}`)
+  if (before.roof.overhang !== after.roof.overhang) bits.push(`overhang ${after.roof.overhang}`)
+  if (before.roof.parapetHeight !== after.roof.parapetHeight) {
+    bits.push(`parapet ${after.roof.parapetHeight}`)
+  }
+  if (before.windows.columns !== after.windows.columns) bits.push(`win cols ${after.windows.columns}`)
+  if (before.windows.rows !== after.windows.rows) bits.push(`win rows ${after.windows.rows}`)
+  if (before.windows.sizeW !== after.windows.sizeW || before.windows.sizeH !== after.windows.sizeH) {
+    bits.push(`win ${after.windows.sizeW}×${after.windows.sizeH}`)
+  }
+  if (before.windows.lintel !== after.windows.lintel) bits.push(`lintel ${after.windows.lintel}`)
+  if (before.windows.bayAllowed !== after.windows.bayAllowed) {
+    bits.push(`bay ${after.windows.bayAllowed}`)
+  }
+  if (before.entrance.stoopSteps !== after.entrance.stoopSteps) {
+    bits.push(`stoop ${after.entrance.stoopSteps}`)
+  }
+  if (before.entrance.chimneyCount !== after.entrance.chimneyCount) {
+    bits.push(`chimney ${after.entrance.chimneyCount}`)
+  }
+  if (before.entrance.porchRoof !== after.entrance.porchRoof) {
+    bits.push(`porch ${after.entrance.porchRoof}`)
+  }
+  if (before.colors.wall !== after.colors.wall) bits.push(`wall ${after.colors.wall}`)
+  if (before.colors.trim !== after.colors.trim) bits.push(`trim ${after.colors.trim}`)
+  if (before.colors.roof !== after.colors.roof) bits.push(`roofColor ${after.colors.roof}`)
+  if (bits.length === 0) bits.push('no field deltas')
+  return bits.join(', ')
+}

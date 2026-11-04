@@ -1286,3 +1286,146 @@
   outline: 2px solid #e10600;
   outline-offset: 1px;
 }
+
+/* —— Debug panel —— */
+.decay-debug-panel {
+  position: fixed;
+  z-index: 40;
+  width: 280px;
+  max-height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #2a2a2a;
+  background: rgba(10, 10, 10, 0.94);
+  color: #e8e2d6;
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  pointer-events: auto;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+.decay-debug-panel.is-collapsed {
+  max-height: none;
+}
+
+.decay-debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #2a2a2a;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.decay-debug-head:active {
+  cursor: grabbing;
+}
+
+.decay-debug-title {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #e10600;
+  font-weight: 700;
+}
+
+.decay-debug-collapse {
+  padding: 2px 6px;
+  border: 1px solid #3a3a3a;
+  background: transparent;
+  color: #a89f90;
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.decay-debug-collapse:hover {
+  border-color: #e10600;
+  color: #fff;
+}
+
+.decay-debug-body {
+  overflow: auto;
+  padding: 0 0 8px;
+}
+
+.decay-debug-section {
+  border-bottom: 1px solid #1e1e1e;
+}
+
+.decay-debug-section-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: #e10600;
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+
+.decay-debug-section-body {
+  padding: 0 10px 8px;
+}
+
+.decay-debug-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 3px;
+  color: #a89f90;
+}
+
+.decay-debug-row span:last-child {
+  color: #e8e2d6;
+  text-align: right;
+  word-break: break-word;
+}
+
+.decay-debug-sub {
+  margin: 6px 0 4px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6a6660;
+}
+
+.decay-debug-empty {
+  margin: 0;
+  color: #6a6660;
+}
+
+.decay-debug-muted {
+  color: #6a6660;
+}
+
+.decay-debug-rebuilds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.decay-debug-rebuilds li {
+  line-height: 1.35;
+  color: #e8e2d6;
+}
+
+.decay-debug-rebuilds strong {
+  color: #e10600;
+  font-weight: 700;
+}

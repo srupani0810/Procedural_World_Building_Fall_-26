@@ -15,6 +15,13 @@ import DecayScene from './decay/DecayScene.tsx'
 import type { JumpDebugInfo } from './decay/DecayFirstPerson.tsx'
 import { DecayShell } from './decay/DecayShell.tsx'
 import { BuildingLab } from './decay/lab/BuildingLab.tsx'
+import { readDebugEnabled, writeDebugEnabled } from './decay/debug/debugPrefs.ts'
+import { DecayDebugPanel } from './decay/debug/DecayDebugPanel.tsx'
+import {
+  recordJumpDebug,
+  recordKeysDown,
+  setDebugRuntimeEnabled,
+} from './decay/debug/debugRuntime.ts'
 import type { BuildingHoverInfo } from './decay/buildings.ts'
 import type { PlayerClaim } from './decay/claims.ts'
 import type { LandUseViewMode } from './decay/landUse.ts'
@@ -204,13 +211,85 @@ function App() {
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [decayTimelinePlaying, mode])
+
   const [decayCensus, setDecayCensus] = useState<RoadCensus>(emptyRoadCensus)
   const [decayGraphReset, setDecayGraphReset] = useState(0)
   const [decayScreen, setDecayScreen] = useState<DecayScreen>('entry')
   const [decayViewTab, setDecayViewTab] = useState<DecayViewTab>('3d')
+  /** Debug mode — off by default; persisted. When false, no debug systems mount. */
+  const [decayDebug, setDecayDebug] = useState(() => readDebugEnabled())
+  /** Lab Apply bumps this so city row meshes rebuild without remorphing. */
+  const [decayRowMeshRevision, setDecayRowMeshRevision] = useState(0)
+  const setDecayDebugPersist = useCallback((on: boolean) => {
+    writeDebugEnabled(on)
+    setDebugRuntimeEnabled(on)
+    setDecayDebug(on)
+  }, [])
+
+  // Keep module runtime in sync (also on first mount from localStorage).
+  useEffect(() => {
+    setDebugRuntimeEnabled(decayDebug)
+  }, [decayDebug])
+
+  // Debug toggle: backtick (`) while in DECAY. Skip when typing in fields.
+  useEffect(() => {
+    if (mode !== 'decay') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Backquote' || e.repeat) return
+      const t = e.target as HTMLElement | null
+      if (
+        t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable)
+      ) {
+        return
+      }
+      e.preventDefault()
+      setDecayDebug((prev) => {
+        const next = !prev
+        writeDebugEnabled(next)
+        setDebugRuntimeEnabled(next)
+        return next
+      })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mode])
+
+  // Key state for Debug panel — only while Debug is on.
+  useEffect(() => {
+    if (mode !== 'decay' || !decayDebug) return
+    const down = new Set<string>()
+    const publish = () => recordKeysDown([...down].sort())
+    const onDown = (e: KeyboardEvent) => {
+      down.add(e.code)
+      publish()
+    }
+    const onUp = (e: KeyboardEvent) => {
+      down.delete(e.code)
+      publish()
+    }
+    const onBlur = () => {
+      down.clear()
+      publish()
+    }
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+      window.removeEventListener('blur', onBlur)
+      recordKeysDown([])
+    }
+  }, [mode, decayDebug])
+
   const [decayJumpFail, setDecayJumpFail] = useState<string | null>(null)
   const [decayJumpDebug, setDecayJumpDebug] = useState<string | null>(null)
   const onJumpDebug = useCallback((info: JumpDebugInfo) => {
+    recordJumpDebug(info)
     setDecayJumpDebug(
       `keys ${info.keys} · xz ${info.x.toFixed(2)}, ${info.z.toFixed(2)} · walkable ${info.walkable ? 'yes' : 'no'} · move (${info.moveX}, ${info.moveZ}) · want ${info.wantDx.toFixed(3)}, ${info.wantDz.toFixed(3)} · got ${info.gotDx.toFixed(3)}, ${info.gotDz.toFixed(3)}`,
     )
@@ -375,7 +454,13 @@ function App() {
           />
         ) : mode === 'decay' ? (
           decayViewTab === 'lab' && decayScreen !== 'entry' ? (
-            <BuildingLab roads={decayRoads} buildings={decayBuildings} />
+            <BuildingLab
+              roads={decayRoads}
+              buildings={decayBuildings}
+              debugEnabled={decayDebug}
+              onAppendLog={appendDecayLog}
+              onRowMeshRebuild={() => setDecayRowMeshRevision((n) => n + 1)}
+            />
           ) : (
             <DecayScene
               terrain={decayTerrain}
@@ -426,6 +511,8 @@ function App() {
               }}
               onAppendJumpLog={(line) => appendDecayLog([line])}
               onJumpDebug={onJumpDebug}
+              debugEnabled={decayDebug}
+              rowMeshRevision={decayRowMeshRevision}
             />
           )
         ) : showSim ? (
@@ -453,9 +540,13 @@ function App() {
           }}
           jumpFailMessage={decayJumpFail}
           onDismissJumpFail={() => setDecayJumpFail(null)}
-          jumpDebugLine={decayViewTab === 'jump' ? decayJumpDebug : null}
+          jumpDebugLine={
+            decayViewTab === 'jump' && !decayDebug ? decayJumpDebug : null
+          }
           roads={decayRoads}
           view={decayView}
+          debugEnabled={decayDebug}
+          onDebugEnabled={setDecayDebugPersist}
           buildings={decayBuildings}
           materiality={decayMateriality}
           census={decayCensus}
@@ -508,6 +599,16 @@ function App() {
             setDecayScreen('entry')
             handleMode('3d')
           }}
+        />
+      ) : null}
+      {mode === 'decay' && decayDebug ? (
+        <DecayDebugPanel
+          viewTab={decayViewTab}
+          timelineT={decayTimelineT}
+          timelinePlaying={decayTimelinePlaying}
+          stageCounts={decayStageCounts}
+          era={decayMateriality.wear}
+          hover={decayBuildingHover.info}
         />
       ) : null}
       {mode === 'decay' ? null : (
