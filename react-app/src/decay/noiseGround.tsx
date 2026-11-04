@@ -19,7 +19,13 @@ import {
   type Mesh,
 } from 'three'
 import { createNoise, terrainAmplitude, type TerrainParams } from '../terrainParams.ts'
-import { DECAY_FIELD_SIZE, DECAY_FOG } from './params.ts'
+import {
+  DECAY_FIELD_SIZE,
+  DECAY_FOG,
+  JUMP_FOG,
+  JUMP_SKY,
+  JUMP_SKY_ZENITH,
+} from './params.ts'
 
 const GROUND_VERT = /* glsl */ `
 attribute vec3 color;
@@ -163,7 +169,7 @@ export function StreamedNoiseGround({
   )
 }
 
-export function DecaySky() {
+export function DecaySky({ jumpIn = false }: { jumpIn?: boolean }) {
   const meshRef = useRef<Mesh>(null)
   const mat = useMemo(
     () =>
@@ -195,6 +201,17 @@ void main() {
     [],
   )
   useEffect(() => () => mat.dispose(), [mat])
+
+  useEffect(() => {
+    if (jumpIn) {
+      mat.uniforms.uHorizon!.value.set(JUMP_SKY)
+      mat.uniforms.uZenith!.value.set(JUMP_SKY_ZENITH)
+    } else {
+      mat.uniforms.uHorizon!.value.set(DECAY_FOG)
+      mat.uniforms.uZenith!.value.set('#525860')
+    }
+  }, [jumpIn, mat])
+
   useFrame(({ camera }) => {
     const mesh = meshRef.current
     if (!mesh) return
@@ -209,11 +226,19 @@ void main() {
   )
 }
 
-export function DecayFog({ density }: { density: number }) {
+export function DecayFog({
+  density,
+  jumpIn = false,
+}: {
+  density: number
+  jumpIn?: boolean
+}) {
   const { scene, camera } = useThree()
   const fogRef = useRef<Fog | null>(null)
   const densityRef = useRef(density)
   densityRef.current = density
+  const jumpRef = useRef(jumpIn)
+  jumpRef.current = jumpIn
 
   useEffect(() => {
     const fog = new Fog(new Color(DECAY_FOG), 40, 120)
@@ -229,12 +254,19 @@ export function DecayFog({ density }: { density: number }) {
     const fog = fogRef.current
     if (!fog) return
     if (scene.fog !== fog) scene.fog = fog
-    fog.color.set(DECAY_FOG)
+    const jp = jumpRef.current
+    fog.color.set(jp ? JUMP_FOG : DECAY_FOG)
     const d = Math.max(0.01, densityRef.current)
-    const dist = Math.hypot(camera.position.x, camera.position.y, camera.position.z)
-    const thicken = Math.min(1, Math.max(0, (d - 0.02) / 0.12))
-    fog.near = Math.max(20, dist * (0.35 - thicken * 0.1))
-    fog.far = Math.max(fog.near + 200, dist + DECAY_FIELD_SIZE * (0.75 - thicken * 0.15))
+    if (jp) {
+      // Soft distance haze from eye level — nearby street stays clear.
+      fog.near = 28
+      fog.far = Math.max(fog.near + 90, 140 + (1 - Math.min(1, d / 0.08)) * 80)
+    } else {
+      const dist = Math.hypot(camera.position.x, camera.position.y, camera.position.z)
+      const thicken = Math.min(1, Math.max(0, (d - 0.02) / 0.12))
+      fog.near = Math.max(20, dist * (0.35 - thicken * 0.1))
+      fog.far = Math.max(fog.near + 200, dist + DECAY_FIELD_SIZE * (0.75 - thicken * 0.15))
+    }
   })
 
   return null

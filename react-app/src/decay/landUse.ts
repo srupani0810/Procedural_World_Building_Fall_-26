@@ -25,8 +25,12 @@ export type PlotLandUse = {
 
 export type LandUseCounts = Record<LandUse, number>
 
-/** Tint / legend mode for buildings + ground. */
-export type LandUseViewMode = 'landUse' | 'stage' | 'both'
+/**
+ * Building color view.
+ * - normal: material / Before parts palette (no land or stage wash)
+ * - landUse / stage / both: tint overlays for analysis
+ */
+export type LandUseViewMode = 'normal' | 'landUse' | 'stage' | 'both'
 
 export const LAND_USE_ORDER: LandUse[] = [
   'industry',
@@ -234,6 +238,40 @@ function medianSteep(plots: MorphPlot[]): number {
   if (steeps.length === 0) return 0.5
   steeps.sort((a, b) => a - b)
   return steeps[Math.floor((steeps.length - 1) * 0.5)]!
+}
+
+export type PlotMainProximity = {
+  plotId: number
+  cx: number
+  cz: number
+  distMain: number
+  nearMain: boolean
+  steep: number
+  area: number
+}
+
+/** Main-road distance per plot — shared by housing / industry form pickers. */
+export function plotMainProximity(
+  plots: MorphPlot[],
+  graph: RoadGraph,
+  params: LandUseParams = LAND_USE_DEFAULTS,
+): Map<number, PlotMainProximity> {
+  const nodes = new Map(graph.nodes.map((n) => [n.id, n]))
+  const out = new Map<number, PlotMainProximity>()
+  for (const plot of plots) {
+    const c = ringCentroid(plot.ring.length >= 3 ? plot.ring : plot.buildingLine)
+    const distMain = distToTier(c.x, c.z, graph, nodes, 'main')
+    out.set(plot.id, {
+      plotId: plot.id,
+      cx: c.x,
+      cz: c.z,
+      distMain,
+      nearMain: distMain <= params.mainNear,
+      steep: plot.steep,
+      area: plot.area,
+    })
+  }
+  return out
 }
 
 function buildFeatures(

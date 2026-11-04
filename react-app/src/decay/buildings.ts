@@ -6,12 +6,39 @@
 import type { HeightFn, Vec2 } from './directionField.ts'
 import { sampleField, type FieldMaps } from './fields.ts'
 import {
+  assignHousingKinds,
+  massHousing,
+  type HousingContext,
+  type HousingCounts,
+  type HousingSite,
+  emptyHousingCounts,
+} from './housingForms.ts'
+import {
+  assignCommerceKinds,
+  massCommerce,
+  type CommerceCounts,
+  type CommerceKind,
+  emptyCommerceCounts,
+} from './commerceForms.ts'
+import { FORM_HEIGHT_RANGES, storiesFromField } from './formHeight.ts'
+import {
+  assignIndustryKinds,
+  massIndustry,
+  type IndustryCounts,
+  type IndustryKind,
+  type IndustrySite,
+  emptyIndustryCounts,
+} from './industryForms.ts'
+import {
   isGroundOnly,
+  plotMainProximity,
   type LandUse,
   type PlotLandUse,
+  type PlotMainProximity,
 } from './landUse.ts'
 import type { MorphPlot } from './morphology.ts'
 import type { BuildingParams, FloorMode } from './params.ts'
+import type { RoadGraph } from './roadGraph.ts'
 
 export type BuildingInstance = {
   plotId: number
@@ -36,6 +63,10 @@ export type BuildingInstance = {
   /** Geometric rise/run. */
   slope: number
   heightField: number
+  /** District layer sample (pre-mix / pre-blend). */
+  districtField?: number
+  /** Plot layer sample (pre-mix / pre-blend). */
+  plotField?: number
   sizeField: number
   slopeField: number
   shrink: number
@@ -43,13 +74,35 @@ export type BuildingInstance = {
   foundations: { y: number; height: number }[]
   landUse?: LandUse
   landUseRule?: string
-  /** Main mass vs yard tower / civic fin. */
-  part?: 'shell' | 'accent'
+  /** Main mass vs yard/civic accent vs row-house secondary unit. */
+  part?: 'shell' | 'accent' | 'unit'
+  /** Housing subtype when landUse is housing. */
+  housingKind?: 'row' | 'walkup' | 'tenement'
+  /** Industry / yard subtype. */
+  industryKind?: IndustryKind
+  /** Commerce low-rise subtype. */
+  commerceKind?: CommerceKind
+  /** Row unit index / count for variant + detail mesh. */
+  unitIndex?: number
+  unitCount?: number
+  /** Corner end-unit or corner plot — side door / windows. */
+  housingCorner?: boolean
+}
+
+export type BuildingFormCensus = {
+  housing: HousingCounts
+  industry: IndustryCounts
+  commerce: CommerceCounts
+  housingSummary: string
+  industrySummary: string
+  commerceSummary: string
 }
 
 export type BuildingHoverInfo = {
   plotId: number
   heightField: number
+  districtField?: number
+  plotField?: number
   sizeField: number
   slope: number
   floorY: number
@@ -204,6 +257,8 @@ export function instanceFromPlot(
 
   const c = ringCentroid(bl)
   const hField = sampleField(fields.height, fields.res, c.x, c.z)
+  const dField = sampleField(fields.heightDistrict, fields.res, c.x, c.z)
+  const pField = sampleField(fields.heightPlot, fields.res, c.x, c.z)
   const sField = sampleField(fields.size, fields.res, c.x, c.z)
   const slField = sampleField(fields.slope, fields.res, c.x, c.z)
 
@@ -270,6 +325,8 @@ export function instanceFromPlot(
     slopeRise: maxC - minC,
     slope: (maxC - minC) / (Math.hypot(foot.width, foot.depth) || 1),
     heightField: hField,
+    districtField: dField,
+    plotField: pField,
     sizeField: sField,
     slopeField: slField,
     shrink,
@@ -284,11 +341,12 @@ export function instanceFromPlot(
 export function applyLandUseMassing(
   inst: BuildingInstance,
   lu: PlotLandUse | undefined,
-  halfExtent: number,
+  ctx: HousingContext,
+  housingKind?: HousingKindFromMap,
+  industryKind?: IndustryKind,
 ): BuildingInstance[] {
   if (!lu || isGroundOnly(lu.use)) return []
   const out: BuildingInstance[] = []
-  const rim = Math.min(1, Math.hypot(inst.x, inst.z) / Math.max(1, halfExtent))
   const base: BuildingInstance = {
     ...inst,
     landUse: lu.use,
@@ -297,75 +355,44 @@ export function applyLandUseMassing(
     foundations: [...inst.foundations],
   }
 
-  if (lu.use === 'industry') {
-    // Wide and low mill / plant shell.
-    base.width = Math.max(inst.width * 1.45, inst.width + 1.2)
-    base.depth = Math.max(inst.depth * 1.25, inst.depth + 0.8)
-    base.stories = Math.max(1, Math.min(2, Math.round(inst.stories * 0.45)))
-    out.push(base)
-    return out
+  if (lu.use === 'housing') {
+    return massHousing(inst, lu, ctx, housingKind ?? 'row')
+  }
+
+  if (lu.use === 'industry' || lu.use === 'yard') {
+    const kind =
+      industryKind ?? (lu.use === 'yard' ? 'rail' : 'factory')
+    return massIndustry(inst, lu.rule, kind, ctx.halfExtent)
   }
 
   if (lu.use === 'commerce') {
-    // Taller toward the center.
-    const boost = 1.15 + (1 - rim) * 1.35
-    base.width = inst.width * 0.95
-    base.depth = inst.depth * 0.9
-    base.stories = Math.max(2, Math.round(inst.stories * boost))
-    out.push(base)
-    return out
-  }
-
-  if (lu.use === 'housing') {
-    // Small domestic footprint.
-    base.width = Math.max(1.6, inst.width * 0.62)
-    base.depth = Math.max(1.6, inst.depth * 0.62)
-    base.stories = Math.max(1, Math.min(3, Math.round(inst.stories * 0.7)))
-    out.push(base)
-    return out
+    const corner = ctx.cornerById?.get(inst.plotId) ?? false
+    return massCommerce(inst, lu.rule, ctx.halfExtent, corner)
   }
 
   if (lu.use === 'civic') {
-    // Distinct upright bar + shallow plinth (accent).
-    base.width = Math.max(1.8, Math.min(inst.width, inst.depth) * 0.55)
-    base.depth = base.width
-    base.stories = Math.max(3, Math.round(inst.stories * 1.15) + 1)
+    // No tall tower — mid block from Height field (2–4).
+    base.width = Math.max(4, inst.width * 0.88)
+    base.depth = Math.max(3.5, inst.depth * 0.85)
+    base.stories = storiesFromField(FORM_HEIGHT_RANGES.civic, inst.heightField)
     out.push(base)
-    const plinth: BuildingInstance = {
-      ...base,
-      part: 'accent',
-      width: Math.max(base.width * 1.8, inst.width * 0.85),
-      depth: Math.max(base.depth * 1.8, inst.depth * 0.85),
-      stories: 0.35,
-      foundations: [],
-    }
-    out.push(plinth)
-    return out
-  }
-
-  if (lu.use === 'yard') {
-    // Flat pad + one tall element.
-    base.width = Math.max(inst.width * 1.15, inst.width + 0.5)
-    base.depth = Math.max(inst.depth * 1.15, inst.depth + 0.5)
-    base.stories = 0.45
-    out.push(base)
-    const tower: BuildingInstance = {
-      ...base,
-      part: 'accent',
-      x: base.x + Math.cos(base.yaw) * base.width * 0.28,
-      z: base.z + Math.sin(base.yaw) * base.width * 0.28,
-      width: Math.max(1.2, base.width * 0.22),
-      depth: Math.max(1.2, base.depth * 0.22),
-      stories: Math.max(4, Math.round(inst.stories) + 2),
-      foundations: [],
-    }
-    out.push(tower)
     return out
   }
 
   out.push(base)
   return out
 }
+
+type HousingKindFromMap = 'row' | 'walkup' | 'tenement'
+
+export const emptyBuildingFormCensus = (): BuildingFormCensus => ({
+  housing: emptyHousingCounts(),
+  industry: emptyIndustryCounts(),
+  commerce: emptyCommerceCounts(),
+  housingSummary: '[housing] —',
+  industrySummary: '[industry] —',
+  commerceSummary: '[commerce] —',
+})
 
 /** Seed shells — non-open plots with land-use forms. Parks/Farms skipped. */
 export function buildBuildings(
@@ -375,21 +402,102 @@ export function buildBuildings(
   params: BuildingParams,
   landUseById?: ReadonlyMap<number, PlotLandUse>,
   halfExtent = 260,
-): BuildingInstance[] {
-  const out: BuildingInstance[] = []
+  graph?: RoadGraph,
+): { instances: BuildingInstance[]; formCensus: BuildingFormCensus } {
+  type Raw = { inst: BuildingInstance; lu: PlotLandUse | undefined; plot: MorphPlot }
+  const raw: Raw[] = []
+  const industryPts: { x: number; z: number }[] = []
+  const housingPts: { x: number; z: number }[] = []
+  const cornerById = new Map<number, boolean>()
+  const proximity: Map<number, PlotMainProximity> = graph
+    ? plotMainProximity(plots, graph)
+    : new Map()
+
   for (const plot of plots) {
+    cornerById.set(plot.id, plot.corner)
     if (plot.open) continue
     const lu = landUseById?.get(plot.id)
     if (lu && isGroundOnly(lu.use)) continue
     const inst = instanceFromPlot(plot, fields, heightAt, params)
     if (!inst) continue
-    if (landUseById && lu) {
-      out.push(...applyLandUseMassing(inst, lu, halfExtent))
-    } else {
-      out.push(inst)
+    if (lu?.use === 'industry') industryPts.push({ x: inst.x, z: inst.z })
+    if (lu?.use === 'housing') housingPts.push({ x: inst.x, z: inst.z })
+    raw.push({ inst, lu, plot })
+  }
+
+  const ctx: HousingContext = { halfExtent, industryPts, cornerById }
+
+  const housingSites: HousingSite[] = []
+  const industrySites: IndustrySite[] = []
+  for (const r of raw) {
+    if (!r.lu) continue
+    const prox = proximity.get(r.plot.id)
+    const distMain = prox?.distMain ?? 999
+    const nearMain = prox?.nearMain ?? false
+    if (r.lu.use === 'housing') {
+      housingSites.push({
+        plotId: r.plot.id,
+        x: r.inst.x,
+        z: r.inst.z,
+        area: r.inst.area,
+        width: r.inst.width,
+        heightField: r.inst.heightField,
+        distMain,
+        nearMain,
+      })
+    }
+    if (r.lu.use === 'industry' || r.lu.use === 'yard') {
+      industrySites.push({
+        plotId: r.plot.id,
+        x: r.inst.x,
+        z: r.inst.z,
+        area: r.plot.area,
+        steep: r.plot.steep,
+        distMain,
+        nearMain,
+        isYard: r.lu.use === 'yard',
+      })
     }
   }
-  return out
+
+  const housingAssign = assignHousingKinds(housingSites, ctx)
+  const industryAssign = assignIndustryKinds(industrySites, { housingPts })
+  const commerceSites = raw
+    .filter((r) => r.lu?.use === 'commerce')
+    .map((r) => ({
+      plotId: r.plot.id,
+      corner: cornerById.get(r.plot.id) ?? false,
+    }))
+  const commerceAssign = assignCommerceKinds(commerceSites)
+
+  const out: BuildingInstance[] = []
+  for (const r of raw) {
+    if (landUseById && r.lu) {
+      out.push(
+        ...applyLandUseMassing(
+          r.inst,
+          r.lu,
+          ctx,
+          housingAssign.byId.get(r.plot.id),
+          industryAssign.byId.get(r.plot.id),
+        ),
+      )
+    } else {
+      out.push(r.inst)
+    }
+  }
+
+  return {
+    instances: out,
+    formCensus: {
+      housing: housingAssign.counts,
+      industry: industryAssign.counts,
+      commerce: commerceAssign.counts,
+      housingSummary: housingAssign.summary,
+      industrySummary: industryAssign.summary,
+      commerceSummary: commerceAssign.summary,
+    },
+  }
 }
 
 /** Player-claimed open plots only (Phase 2 add-only). */
@@ -471,6 +579,8 @@ export function lookupHover(
   return {
     plotId: b.plotId,
     heightField: b.heightField,
+    districtField: b.districtField,
+    plotField: b.plotField,
     sizeField: b.sizeField,
     slope: b.slope,
     floorY: b.floorY,

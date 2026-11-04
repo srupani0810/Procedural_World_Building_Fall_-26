@@ -23,6 +23,7 @@ import {
   buildClaimedBuildings,
   buildHoverIndex,
   lookupHover,
+  type BuildingFormCensus,
   type BuildingHoverInfo,
 } from './buildings.ts'
 import {
@@ -31,6 +32,10 @@ import {
   findClaimablePlot,
   type PlayerClaim,
 } from './claims.ts'
+import { HousingDetailLayer } from './HousingDetailLayer.tsx'
+import { CommerceDetailLayer } from './CommerceDetailLayer.tsx'
+import { IndustryDetailLayer } from './IndustryDetailLayer.tsx'
+import type { RoadGraph } from './roadGraph.ts'
 import {
   landUseIndex,
   type LandUseViewMode,
@@ -185,7 +190,7 @@ export function BuildingLayer({
   view,
   timelineT,
   absenceClock,
-  tintMode = 'landUse',
+  tintMode = 'normal',
   onFieldsPainted,
   onHover,
   onAppendLog,
@@ -195,6 +200,8 @@ export function BuildingLayer({
   claimEnabled = false,
   onClaim,
   landUseById,
+  graph,
+  onFormCensus,
 }: {
   plots: MorphPlot[]
   heightAt: HeightFn
@@ -218,6 +225,8 @@ export function BuildingLayer({
   claimEnabled?: boolean
   onClaim?: (plotId: number) => void
   landUseById?: ReadonlyMap<number, PlotLandUse>
+  graph?: RoadGraph
+  onFormCensus?: (census: BuildingFormCensus) => void
 }) {
   const buildingMesh = useRef<InstancedMesh>(null)
   const foundationMesh = useRef<InstancedMesh>(null)
@@ -255,8 +264,17 @@ export function BuildingLayer({
     return m
   }, [claims])
 
-  const seedInstances = useMemo(
-    () => buildBuildings(plots, fields, heightAt, buildings, landUseById, halfExtent),
+  const seedBuild = useMemo(
+    () =>
+      buildBuildings(
+        plots,
+        fields,
+        heightAt,
+        buildings,
+        landUseById,
+        halfExtent,
+        graph,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       plots,
@@ -265,6 +283,7 @@ export function BuildingLayer({
       heightAt,
       halfExtent,
       landUseById,
+      graph,
       buildings.storyHeight,
       buildings.minStories,
       buildings.maxStories,
@@ -276,10 +295,12 @@ export function BuildingLayer({
       buildings.steepShrink,
     ],
   )
+  const seedInstances = seedBuild.instances
+  const formCensus = seedBuild.formCensus
 
-  /** One shell per plot for vacate / census — accents share plot id. */
+  /** One primary shell per plot for vacate / census — skip accents + row units. */
   const seedShells = useMemo(
-    () => seedInstances.filter((b) => b.part !== 'accent'),
+    () => seedInstances.filter((b) => b.part !== 'accent' && b.part !== 'unit'),
     [seedInstances],
   )
 
@@ -340,7 +361,7 @@ export function BuildingLayer({
   const claimPointerRef = useRef<{ x: number; y: number } | null>(null)
 
   const censusInstances = useMemo(
-    () => instances.filter((b) => b.part !== 'accent'),
+    () => instances.filter((b) => b.part !== 'accent' && b.part !== 'unit'),
     [instances],
   )
 
@@ -374,17 +395,50 @@ export function BuildingLayer({
   onHoverRef.current = onHover
   const onAppendLogRef = useRef(onAppendLog)
   onAppendLogRef.current = onAppendLog
+  const onFormCensusRef = useRef(onFormCensus)
+  onFormCensusRef.current = onFormCensus
+  const formLogKey = useRef('')
+  useEffect(() => {
+    onFormCensusRef.current?.(formCensus)
+    const key = `${formCensus.housingSummary}|${formCensus.industrySummary}|${formCensus.commerceSummary}`
+    if (key === formLogKey.current) return
+    formLogKey.current = key
+    onAppendLogRef.current([
+      formCensus.housingSummary,
+      formCensus.industrySummary,
+      formCensus.commerceSummary,
+    ])
+  }, [formCensus])
   const lastHoverAt = useRef(0)
   const lastPointer = useRef({ x: 0, y: 0, moved: false })
   const paintingRef = useRef(false)
 
+  /**
+   * Normal view: parts-kit meshes draw Before colors (no land tint).
+   * Land use / Stage / Both: fall back to tinted boxes for those shells.
+   */
+  const showPartsKit = tintMode === 'normal'
+  const boxInstances = useMemo(
+    () =>
+      showPartsKit
+        ? instances.filter(
+            (b) =>
+              b.housingKind !== 'row' &&
+              b.housingKind !== 'walkup' &&
+              !b.industryKind &&
+              !b.commerceKind,
+          )
+        : instances,
+    [instances, showPartsKit],
+  )
+
   const foundationCount = useMemo(() => {
     let n = 0
-    for (const b of instances) n += b.foundations.length
+    for (const b of boxInstances) n += b.foundations.length
     return n
-  }, [instances])
+  }, [boxInstances])
 
-  const buildingCap = Math.max(4, instances.length || 4)
+  const buildingCap = Math.max(4, boxInstances.length || 4)
 
   useLayoutEffect(() => {
     const mesh = buildingMesh.current
@@ -393,7 +447,7 @@ export function BuildingLayer({
     const tarp = tarpMesh.current
     if (!mesh || !found) return
 
-    const n = instances.length
+    const n = boxInstances.length
     const matIds = new Float32Array(Math.max(n, 1))
     const wears = new Float32Array(Math.max(n, 1))
     const fails = new Float32Array(Math.max(n, 1))
@@ -408,8 +462,19 @@ export function BuildingLayer({
     let di = 0
     let ti = 0
 
+    // Stage flips still tracked for all shells (including row) via censusInstances.
+    for (const b of instances) {
+      if (b.part === 'accent' || b.part === 'unit') continue
+      const st = stageAtTime(b.plotId, timelineT, vacateById, absenceClock)
+      nextPrev.set(b.plotId, st.stage)
+      const was = prev.get(b.plotId)
+      if (was != null && was !== st.stage) {
+        stageLogs.push(formatStageLog(b.plotId, was, st.stage, st.rule, timelineT))
+      }
+    }
+
     for (let i = 0; i < n; i++) {
-      const b = instances[i]!
+      const b = boxInstances[i]!
       const h = Math.max(0.2, b.stories * b.storyHeight)
       const st = stageAtTime(b.plotId, timelineT, vacateById, absenceClock)
       // Materiality wear scrub can still preview; timeline stage drives aStage tint.
@@ -428,13 +493,6 @@ export function BuildingLayer({
       seeds[i] = seedFromPlot(b.plotId)
       stages[i] = stageIndex(st.stage)
       lands[i] = b.landUse != null ? landUseIndex(b.landUse) : 2
-      if (b.part !== 'accent') {
-        nextPrev.set(b.plotId, st.stage)
-        const was = prev.get(b.plotId)
-        if (was != null && was !== st.stage) {
-          stageLogs.push(formatStageLog(b.plotId, was, st.stage, st.rule, timelineT))
-        }
-      }
 
       dummy.position.set(b.x, b.floorY + h * 0.5, b.z)
       dummy.rotation.set(0, b.yaw, 0)
@@ -512,6 +570,7 @@ export function BuildingLayer({
     if (stageLogs.length > 0) onAppendLogRef.current(stageLogs)
   }, [
     instances,
+    boxInstances,
     dummy,
     materiality,
     buildings.maxStories,
@@ -525,7 +584,14 @@ export function BuildingLayer({
     if (!buildings.heatmap) return null
     return buildHeatGeometry(fields, kindOf(buildings), heightAt)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildings.heatmap, buildings.activeField, fields, fieldRevision, heightAt])
+  }, [
+    buildings.heatmap,
+    buildings.activeField,
+    fields,
+    fields.heightSpec.heatView,
+    fieldRevision,
+    heightAt,
+  ])
 
   useEffect(() => () => heatGeo?.dispose(), [heatGeo])
 
@@ -667,6 +733,20 @@ export function BuildingLayer({
 
   return (
     <group>
+      <HousingDetailLayer
+        instances={instances}
+        halfExtent={halfExtent}
+        visible={view.showBuildings && showPartsKit}
+      />
+      <IndustryDetailLayer
+        instances={instances}
+        visible={view.showBuildings && showPartsKit}
+      />
+      <CommerceDetailLayer
+        instances={instances}
+        halfExtent={halfExtent}
+        visible={view.showBuildings && showPartsKit}
+      />
       <instancedMesh
         key={`b-${buildingCap}`}
         ref={buildingMesh}

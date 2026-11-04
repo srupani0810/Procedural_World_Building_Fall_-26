@@ -27,9 +27,18 @@ import {
   type MorphCache,
 } from './morphology.ts'
 import { BuildingLayer } from './BuildingLayer.tsx'
-import type { BuildingHoverInfo } from './buildings.ts'
+import {
+  buildBuildings,
+  buildClaimedBuildings,
+  type BuildingFormCensus,
+  type BuildingHoverInfo,
+} from './buildings.ts'
 import type { PlayerClaim } from './claims.ts'
+import { DecayFirstPerson } from './DecayFirstPerson.tsx'
 import type { FieldMaps } from './fields.ts'
+import { findJumpInSpawn } from './jumpInSpawn.ts'
+import { JumpInErrorBoundary } from './JumpInErrorBoundary.tsx'
+import { buildSolidGrid } from './jumpSolids.ts'
 import {
   assignLandUse,
   LAND_USE_COLORS,
@@ -61,6 +70,16 @@ import {
   pickNearest,
   type RoadGraph,
 } from './roadGraph.ts'
+import {
+  JUMP_ROAD_LIFT,
+  JUMP_WALK_LIFT,
+  ORBIT_ROAD_LIFT,
+  ORBIT_WALK_LIFT,
+} from './jumpSurface.ts'
+import {
+  buildWalkableMap,
+  JUMP_WALK_WINDOW_HALF,
+} from './walkableMap.ts'
 
 export function makeHeightAt(terrain: TerrainParams): HeightFn {
   const sample = createNoise(terrain)
@@ -70,8 +89,8 @@ export function makeHeightAt(terrain: TerrainParams): HeightFn {
 
 const SAMPLE_STEP = 1.05
 const SMOOTH_PASSES = 4
-const LIFT = 0.62
-const WALK_LIFT = 0.52
+const LIFT = ORBIT_ROAD_LIFT
+const WALK_LIFT = ORBIT_WALK_LIFT
 const PLOT_LIFT = 0.48
 const LINE_LIFT = 0.56
 
@@ -105,7 +124,14 @@ const RGB_LAND: Record<LandUse, Rgb> = {
   yard: hexRgb(LAND_USE_COLORS.yard),
 }
 
-function sampleEdge(a: { x: number; z: number }, b: { x: number; z: number }, heightAt: HeightFn): Sample[] {
+function sampleEdge(
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+  heightAt: HeightFn,
+  lift = LIFT,
+  /** Orbit ribbons smooth along the edge; Jump In stays locked to terrain. */
+  smooth = true,
+): Sample[] {
   const len = Math.hypot(b.x - a.x, b.z - a.z)
   const n = Math.max(2, Math.ceil(len / SAMPLE_STEP) + 1)
   const pts: Sample[] = []
@@ -113,12 +139,14 @@ function sampleEdge(a: { x: number; z: number }, b: { x: number; z: number }, he
     const t = i / (n - 1)
     const x = a.x + (b.x - a.x) * t
     const z = a.z + (b.z - a.z) * t
-    pts.push({ x, y: heightAt(x, z) + LIFT, z })
+    pts.push({ x, y: heightAt(x, z) + lift, z })
   }
-  for (let p = 0; p < SMOOTH_PASSES; p++) {
-    const ys = pts.map((s) => s.y)
-    for (let i = 1; i < pts.length - 1; i++) {
-      pts[i]!.y = ys[i - 1]! * 0.25 + ys[i]! * 0.5 + ys[i + 1]! * 0.25
+  if (smooth) {
+    for (let p = 0; p < SMOOTH_PASSES; p++) {
+      const ys = pts.map((s) => s.y)
+      for (let i = 1; i < pts.length - 1; i++) {
+        pts[i]!.y = ys[i - 1]! * 0.25 + ys[i]! * 0.5 + ys[i + 1]! * 0.25
+      }
     }
   }
   return pts
@@ -247,7 +275,13 @@ function tierRgb(tier: 'main' | 'collector' | 'local'): Rgb {
   return RGB_LOCAL
 }
 
-function buildRoadMesh(graph: RoadGraph, heightAt: HeightFn, roads: RoadNetworkParams) {
+function buildRoadMesh(
+  graph: RoadGraph,
+  heightAt: HeightFn,
+  roads: RoadNetworkParams,
+  roadLift = LIFT,
+  flush = false,
+) {
   const pos: number[] = []
   const nrm: number[] = []
   const col: number[] = []
@@ -257,7 +291,14 @@ function buildRoadMesh(graph: RoadGraph, heightAt: HeightFn, roads: RoadNetworkP
     const b = byId.get(e.nodeB)
     if (!a || !b) continue
     const half = edgeHalfWidth(e, roads)
-    pushRoadStrip(pos, nrm, col, sampleEdge(a, b, heightAt), half, tierRgb(e.tier))
+    pushRoadStrip(
+      pos,
+      nrm,
+      col,
+      sampleEdge(a, b, heightAt, roadLift, !flush),
+      half,
+      tierRgb(e.tier),
+    )
   }
   // Corner fillets at junctions (degree ≥ 3)
   const deg = new Map<number, number>()
@@ -271,7 +312,7 @@ function buildRoadMesh(graph: RoadGraph, heightAt: HeightFn, roads: RoadNetworkP
     const segs = 10
     for (const n of graph.nodes) {
       if ((deg.get(n.id) ?? 0) < 3) continue
-      const y = heightAt(n.x, n.z) + LIFT + 0.01
+      const y = heightAt(n.x, n.z) + roadLift + 0.01
       const rgb = RGB_MAIN
       for (let i = 0; i < segs; i++) {
         const a0 = (i / segs) * Math.PI * 2
@@ -296,7 +337,13 @@ function buildRoadMesh(graph: RoadGraph, heightAt: HeightFn, roads: RoadNetworkP
   return geo
 }
 
-function buildSidewalkMesh(graph: RoadGraph, heightAt: HeightFn, roads: RoadNetworkParams) {
+function buildSidewalkMesh(
+  graph: RoadGraph,
+  heightAt: HeightFn,
+  roads: RoadNetworkParams,
+  walkLift = WALK_LIFT,
+  flush = false,
+) {
   const pos: number[] = []
   const nrm: number[] = []
   const col: number[] = []
@@ -308,9 +355,9 @@ function buildSidewalkMesh(graph: RoadGraph, heightAt: HeightFn, roads: RoadNetw
     const b = byId.get(e.nodeB)
     if (!a || !b) continue
     const half = edgeHalfWidth(e, roads)
-    const samples = sampleEdge(a, b, heightAt).map((s) => ({
+    const samples = sampleEdge(a, b, heightAt, walkLift, !flush).map((s) => ({
       ...s,
-      y: heightAt(s.x, s.z) + WALK_LIFT,
+      y: heightAt(s.x, s.z) + walkLift,
     }))
     pushBand(pos, nrm, col, samples, half, half + walk, RGB_WALK, 0)
   }
@@ -528,7 +575,7 @@ export function RoadNetwork({
   materiality,
   timelineT,
   absenceClock,
-  tintMode = 'landUse',
+  tintMode = 'normal',
   onFieldsPainted,
   onBuildingHover,
   onAppendLog,
@@ -537,6 +584,11 @@ export function RoadNetwork({
   claims = [],
   claimEnabled = false,
   onClaim,
+  onFormCensus,
+  jumpIn = false,
+  onExitJumpIn,
+  onJumpFail,
+  onAppendJumpLog,
 }: {
   terrain: TerrainParams
   roads: RoadNetworkParams
@@ -560,6 +612,11 @@ export function RoadNetwork({
   claims?: PlayerClaim[]
   claimEnabled?: boolean
   onClaim?: (plotId: number) => void
+  onFormCensus?: (census: BuildingFormCensus) => void
+  jumpIn?: boolean
+  onExitJumpIn?: () => void
+  onJumpFail?: (reason: string) => void
+  onAppendJumpLog?: (line: string) => void
 }) {
   const heightAt = useMemo(() => makeHeightAt(terrain), [terrain])
   const [graph, setGraph] = useState<RoadGraph>(() => emptyGraph())
@@ -573,6 +630,15 @@ export function RoadNetwork({
   graphRef.current = graph
   const onCensusRef = useRef(onCensus)
   onCensusRef.current = onCensus
+  const formCensusRef = useRef({
+    housingRow: 0,
+    housingWalkup: 0,
+    housingTenement: 0,
+    industryFactory: 0,
+    industryWarehouse: 0,
+    industryHeavy: 0,
+    industryRail: 0,
+  })
 
   const genKey = [
     resetToken,
@@ -600,6 +666,8 @@ export function RoadNetwork({
   const pendingRef = useRef<PendingPick | null>(null)
   const viewRef = useRef(view)
   viewRef.current = view
+  const jumpInRef = useRef(jumpIn)
+  jumpInRef.current = jumpIn
   const selectedRef = useRef(selected)
   selectedRef.current = selected
   const nodeMeshRef = useRef<InstancedMesh>(null)
@@ -620,7 +688,7 @@ export function RoadNetwork({
   const setControlsEnabled = (on: boolean) => {
     const c = controlsRef.current
     if (!c) return
-    c.enabled = on
+    c.enabled = on && !jumpInRef.current
   }
 
   const publish = (lines: string[]) => {
@@ -661,7 +729,21 @@ export function RoadNetwork({
       landPark: landCounts?.park ?? 0,
       landFarm: landCounts?.farm ?? 0,
       landYard: landCounts?.yard ?? 0,
+      ...formCensusRef.current,
     })
+  }
+
+  const handleFormCensus = (fc: BuildingFormCensus) => {
+    formCensusRef.current = {
+      housingRow: fc.housing.row,
+      housingWalkup: fc.housing.walkup,
+      housingTenement: fc.housing.tenement,
+      industryFactory: fc.industry.factory,
+      industryWarehouse: fc.industry.warehouse,
+      industryHeavy: fc.industry.heavy,
+      industryRail: fc.industry.rail,
+    }
+    onFormCensus?.(fc)
   }
 
   const runMorph = (g: RoadGraph, extra: string[] = [], replaceLog = false) => {
@@ -698,11 +780,11 @@ export function RoadNetwork({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [morphKey])
 
-  // Camera stays on unless a node is actively being dragged.
+  // Camera stays on unless Jump In or a node is actively being dragged.
   useEffect(() => {
-    setControlsEnabled(dragging == null)
-    return () => setControlsEnabled(true)
-  }, [dragging])
+    setControlsEnabled(!jumpIn && dragging == null)
+    return () => setControlsEnabled(!jumpInRef.current)
+  }, [dragging, jumpIn])
 
   const morph = useMemo(() => {
     const result = buildMorphology(graph, roads, heightAt, morphCacheRef.current)
@@ -721,18 +803,158 @@ export function RoadNetwork({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [landUse.summary, graph, morph])
 
+  const surfaceRoadLift = jumpIn ? JUMP_ROAD_LIFT : ORBIT_ROAD_LIFT
+  const surfaceWalkLift = jumpIn ? JUMP_WALK_LIFT : ORBIT_WALK_LIFT
+
   const roadGeo = useMemo(
-    () => buildRoadMesh(graph, heightAt, roads),
-    [graph, heightAt, roads.mainWidth, roads.collectorWidth, roads.localWidth, roads.cornerRadius],
+    () => buildRoadMesh(graph, heightAt, roads, surfaceRoadLift, jumpIn),
+    [
+      graph,
+      heightAt,
+      roads.mainWidth,
+      roads.collectorWidth,
+      roads.localWidth,
+      roads.cornerRadius,
+      surfaceRoadLift,
+      jumpIn,
+    ],
   )
   const walkGeo = useMemo(
-    () => buildSidewalkMesh(graph, heightAt, roads),
-    [graph, heightAt, roads.mainWidth, roads.collectorWidth, roads.localWidth, roads.sidewalkWidth],
+    () => buildSidewalkMesh(graph, heightAt, roads, surfaceWalkLift, jumpIn),
+    [
+      graph,
+      heightAt,
+      roads.mainWidth,
+      roads.collectorWidth,
+      roads.localWidth,
+      roads.sidewalkWidth,
+      surfaceWalkLift,
+      jumpIn,
+    ],
   )
   const plotBuilt = useMemo(
     () => buildPlotMeshes(morph, heightAt, view, landUse.byId),
     [morph, heightAt, view.showPlots, view.showCornerPlots, view.showOpenPlots, view.showBuildingLine, landUse.byId],
   )
+
+  const claimById = useMemo(() => {
+    const m = new Map<number, PlayerClaim>()
+    for (const c of claims) m.set(c.plotId, c)
+    return m
+  }, [claims])
+
+  /** Shared building list for Jump In collision (same rules as BuildingLayer). */
+  const jumpInstances = useMemo(() => {
+    const seed = buildBuildings(
+      morph.plots,
+      fields,
+      heightAt,
+      buildings,
+      landUse.byId,
+      roads.halfExtent,
+      graph,
+    ).instances
+    const claimed = buildClaimedBuildings(morph.plots, fields, heightAt, buildings, claimById)
+    return claimed.length === 0 ? seed : [...seed, ...claimed]
+  }, [
+    morph.plots,
+    fields,
+    fieldRevision,
+    heightAt,
+    buildings,
+    landUse.byId,
+    roads.halfExtent,
+    graph,
+    claimById,
+  ])
+
+  /** Spawn-centered window on enter; followOrigin updates as the player walks. */
+  const spawnOrigin = useMemo(() => {
+    if (!jumpIn) return { x: 0, z: 0 }
+    try {
+      const spawn = findJumpInSpawn(graph, roads, heightAt)
+      return { x: spawn?.x ?? 0, z: spawn?.z ?? 0 }
+    } catch {
+      return { x: 0, z: 0 }
+    }
+  }, [jumpIn, graph, roads, heightAt])
+
+  const [followOrigin, setFollowOrigin] = useState<{ x: number; z: number } | null>(null)
+  useEffect(() => {
+    if (!jumpIn) setFollowOrigin(null)
+  }, [jumpIn])
+
+  const jumpWindow = followOrigin ?? spawnOrigin
+  const jumpWindowRef = useRef(jumpWindow)
+  jumpWindowRef.current = jumpWindow
+
+  const walkMap = useMemo(() => {
+    if (!jumpIn) return null
+    return buildWalkableMap(graph, roads, morph.plots, landUse.byId, jumpInstances, heightAt, 0.5, {
+      originX: jumpWindow.x,
+      originZ: jumpWindow.z,
+      windowHalf: JUMP_WALK_WINDOW_HALF,
+    })
+  }, [
+    jumpIn,
+    jumpWindow.x,
+    jumpWindow.z,
+    graph,
+    roads,
+    morph.plots,
+    landUse.byId,
+    jumpInstances,
+    heightAt,
+  ])
+
+  const solidGrid = useMemo(() => {
+    if (!jumpIn) return null
+    return buildSolidGrid(jumpInstances, roads.halfExtent, 1.0, {
+      originX: jumpWindow.x,
+      originZ: jumpWindow.z,
+      windowHalf: JUMP_WALK_WINDOW_HALF,
+    })
+  }, [jumpIn, jumpWindow.x, jumpWindow.z, jumpInstances, roads.halfExtent])
+
+  const walkMapLogged = useRef(false)
+  useEffect(() => {
+    if (!jumpIn) {
+      walkMapLogged.current = false
+      return
+    }
+    if (!walkMap || !solidGrid) return
+    if (walkMapLogged.current) return
+    walkMapLogged.current = true
+    onAppendJumpLog?.(walkMap.rule)
+    onAppendJumpLog?.(solidGrid.rule)
+    onAppendJumpLog?.(
+      `[jump] overlays hidden · roads/walks flush (curb ${JUMP_WALK_LIFT - JUMP_ROAD_LIFT})`,
+    )
+  }, [jumpIn, walkMap, solidGrid, onAppendJumpLog])
+
+  const onWindowFollow = (x: number, z: number) => {
+    const cur = jumpWindowRef.current
+    if (Math.abs(x - cur.x) < 0.5 && Math.abs(z - cur.z) < 0.5) return
+    setFollowOrigin({ x, z })
+  }
+
+  const handleJumpFail = (reason: string) => {
+    console.error('[jump] Jump In failed:', reason)
+    onJumpFail?.(reason)
+  }
+
+  /** Jump In: hide plot fills, corner/open marks, building lines, nodes — restore on exit. */
+  const drawView = useMemo(() => {
+    if (!jumpIn) return view
+    return {
+      ...view,
+      showPlots: false,
+      showCornerPlots: false,
+      showOpenPlots: false,
+      showBuildingLine: false,
+      showNodes: false,
+    }
+  }, [view, jumpIn])
 
   useEffect(() => {
     onSelection?.({ draggingId: dragging, selectedId: selected })
@@ -852,7 +1074,7 @@ export function RoadNetwork({
 
     const onDown = (ev: PointerEvent) => {
       if (ev.button !== 0) return
-      if (!viewRef.current.editingEnabled) {
+      if (jumpInRef.current || !viewRef.current.editingEnabled) {
         pendingRef.current = null
         return
       }
@@ -957,7 +1179,7 @@ export function RoadNetwork({
       }
 
       // Hover highlight only (does not capture).
-      if (!viewRef.current.editingEnabled) {
+      if (jumpInRef.current || !viewRef.current.editingEnabled) {
         setHoverNode(null)
         return
       }
@@ -982,7 +1204,7 @@ export function RoadNetwork({
       }
       const pending = pendingRef.current
       pendingRef.current = null
-      if (!pending || !viewRef.current.editingEnabled) return
+      if (!pending || jumpInRef.current || !viewRef.current.editingEnabled) return
       if (ev.button !== 0) return
       const dist = Math.hypot(ev.clientX - pending.x, ev.clientY - pending.y)
       if (dist > CLICK_PX) return // was a camera drag
@@ -1023,10 +1245,10 @@ export function RoadNetwork({
         heightAt={heightAt}
         fields={fields}
         fieldRevision={fieldRevision}
-        buildings={buildings}
+        buildings={jumpIn ? { ...buildings, heatmap: false } : buildings}
         materiality={materiality}
         halfExtent={roads.halfExtent}
-        view={view}
+        view={drawView}
         timelineT={timelineT}
         absenceClock={absenceClock}
         tintMode={tintMode}
@@ -1039,8 +1261,10 @@ export function RoadNetwork({
         claimEnabled={claimEnabled}
         onClaim={onClaim}
         landUseById={landUse.byId}
+        graph={graph}
+        onFormCensus={handleFormCensus}
       />
-      {view.showPlots || view.showCornerPlots || view.showOpenPlots ? (
+      {drawView.showPlots || drawView.showCornerPlots || drawView.showOpenPlots ? (
         plotBuilt.geo.attributes.position ? (
           <mesh
             geometry={plotBuilt.geo}
@@ -1063,12 +1287,12 @@ export function RoadNetwork({
           </mesh>
         ) : null
       ) : null}
-      {view.showSidewalks && walkGeo.attributes.position ? (
+      {drawView.showSidewalks && walkGeo.attributes.position ? (
         <mesh geometry={walkGeo} frustumCulled={false} renderOrder={2} raycast={() => null}>
           <meshStandardMaterial
             vertexColors
             side={DoubleSide}
-            roughness={0.95}
+            roughness={0.92}
             metalness={0}
             polygonOffset
             polygonOffsetFactor={-2}
@@ -1076,27 +1300,27 @@ export function RoadNetwork({
           />
         </mesh>
       ) : null}
-      {view.showRoads ? (
+      {drawView.showRoads ? (
         <mesh geometry={roadGeo} frustumCulled={false} renderOrder={3} raycast={() => null}>
           <meshStandardMaterial
             vertexColors
             side={DoubleSide}
-            roughness={0.88}
+            roughness={jumpIn ? 0.82 : 0.88}
             metalness={0}
-            emissive="#2c241e"
-            emissiveIntensity={0.28}
+            emissive={jumpIn ? '#6a6358' : '#2c241e'}
+            emissiveIntensity={jumpIn ? 0.5 : 0.28}
             polygonOffset
             polygonOffsetFactor={-3}
             polygonOffsetUnits={-3}
           />
         </mesh>
       ) : null}
-      {view.showBuildingLine && plotBuilt.lineGeo.attributes.position ? (
+      {drawView.showBuildingLine && plotBuilt.lineGeo.attributes.position ? (
         <lineSegments geometry={plotBuilt.lineGeo} frustumCulled={false} renderOrder={4} raycast={() => null}>
           <lineBasicMaterial color={DECAY_MORPH.buildingLine} transparent opacity={0.85} />
         </lineSegments>
       ) : null}
-      {view.showNodes && graph.nodes.length > 0 ? (
+      {drawView.showNodes && graph.nodes.length > 0 ? (
         <instancedMesh
           ref={nodeMeshRef}
           key={graph.nodes.length}
@@ -1110,6 +1334,7 @@ export function RoadNetwork({
         </instancedMesh>
       ) : null}
       {(() => {
+        if (jumpIn) return null
         const id = dragging ?? selected ?? hoverNode
         const n = id != null ? getNode(graph, id) : null
         if (!n) return null
@@ -1125,6 +1350,20 @@ export function RoadNetwork({
           </mesh>
         )
       })()}
+      <JumpInErrorBoundary enabled={jumpIn} onFail={handleJumpFail}>
+        <DecayFirstPerson
+          enabled={jumpIn}
+          graph={graph}
+          roads={roads}
+          heightAt={heightAt}
+          walkMap={walkMap}
+          solidGrid={solidGrid}
+          onExit={() => onExitJumpIn?.()}
+          onFail={handleJumpFail}
+          onWindowFollow={onWindowFollow}
+          onSpawnLog={onAppendJumpLog}
+        />
+      </JumpInErrorBoundary>
     </group>
   )
 }

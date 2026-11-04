@@ -6,7 +6,7 @@ import { useEffect } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import type { TerrainParams } from '../terrainParams.ts'
-import type { BuildingHoverInfo } from './buildings.ts'
+import type { BuildingFormCensus, BuildingHoverInfo } from './buildings.ts'
 import type { PlayerClaim } from './claims.ts'
 import type { FieldMaps } from './fields.ts'
 import type { LandUseViewMode } from './landUse.ts'
@@ -15,6 +15,7 @@ import { DecayFog, DecaySky, StreamedNoiseGround } from './noiseGround.tsx'
 import { RoadNetwork } from './RoadNetwork.tsx'
 import {
   DECAY_SKY,
+  JUMP_SKY,
   type BuildingParams,
   type DecaySelection,
   type DecayViewParams,
@@ -58,6 +59,12 @@ export type DecaySceneProps = {
   claims?: PlayerClaim[]
   claimEnabled?: boolean
   onClaim?: (plotId: number) => void
+  onFormCensus?: (census: BuildingFormCensus) => void
+  /** Jump In first-person walk. */
+  jumpIn?: boolean
+  onExitJumpIn?: () => void
+  onJumpFail?: (reason: string) => void
+  onAppendJumpLog?: (line: string) => void
 }
 
 export default function DecayScene({
@@ -71,7 +78,7 @@ export default function DecayScene({
   materiality,
   timelineT,
   absenceClock,
-  tintMode = 'landUse',
+  tintMode = 'normal',
   onRoadLog,
   onCensus,
   onSelection,
@@ -83,6 +90,11 @@ export default function DecayScene({
   claims = [],
   claimEnabled = false,
   onClaim,
+  onFormCensus,
+  jumpIn = false,
+  onExitJumpIn,
+  onJumpFail,
+  onAppendJumpLog,
 }: DecaySceneProps) {
   const graphKey = [
     graphReset,
@@ -107,12 +119,20 @@ export default function DecayScene({
       gl={{ antialias: true }}
       dpr={[1, 1.75]}
     >
-      <color attach="background" args={[DECAY_SKY]} />
-      <DecaySky />
-      <DecayFog density={view.fogDensity} />
-      <ambientLight intensity={0.32} color="#c8c2b8" />
-      <directionalLight position={[6, 10, 3]} intensity={1.05} color="#e0e4ea" />
-      <directionalLight position={[-4, 3, -5]} intensity={0.3} color="#8a949e" />
+      <color attach="background" args={[jumpIn ? JUMP_SKY : DECAY_SKY]} />
+      <DecaySky jumpIn={jumpIn} />
+      <DecayFog density={view.fogDensity} jumpIn={jumpIn} />
+      <ambientLight intensity={jumpIn ? 0.55 : 0.32} color={jumpIn ? '#d8d2c6' : '#c8c2b8'} />
+      <directionalLight
+        position={[6, 10, 3]}
+        intensity={jumpIn ? 1.2 : 1.05}
+        color={jumpIn ? '#f0e6d4' : '#e0e4ea'}
+      />
+      <directionalLight
+        position={[-4, 3, -5]}
+        intensity={jumpIn ? 0.38 : 0.3}
+        color={jumpIn ? '#a8b0b8' : '#8a949e'}
+      />
       <StreamedNoiseGround terrain={terrain} fogDensity={view.fogDensity} />
       <RoadNetwork
         key={graphKey}
@@ -136,11 +156,19 @@ export default function DecayScene({
         onStageCensus={onStageCensus}
         onStageSeries={onStageSeries}
         claims={claims}
-        claimEnabled={claimEnabled}
+        claimEnabled={claimEnabled && !jumpIn}
         onClaim={onClaim}
+        onFormCensus={onFormCensus}
+        jumpIn={jumpIn}
+        onExitJumpIn={onExitJumpIn}
+        onJumpFail={onJumpFail}
+        onAppendJumpLog={onAppendJumpLog}
       />
       <OrbitControls
         makeDefault
+        enabled={!jumpIn}
+        // Arrow keys are for Jump In walk — never pan the orbit camera with them here.
+        keyEvents={false}
         target={[0, 2, 0]}
         maxPolarAngle={Math.PI * 0.495}
         minPolarAngle={0}

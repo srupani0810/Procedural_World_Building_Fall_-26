@@ -239,22 +239,25 @@ if (vStage > 0.5 && vStage < 1.5) stageCol = uStageSettled;
 else if (vStage > 1.5 && vStage < 2.5) stageCol = uStageAbandoned;
 else if (vStage > 2.5) stageCol = uStageReclaimed;
 
-if (uTintMode < 0.5) {
+// uTintMode: 0 normal · 1 landUse · 2 stage · 3 both
+if (uTintMode > 0.5 && uTintMode < 1.5) {
   col = mix(col, landCol, 0.88);
-} else if (uTintMode < 1.5) {
+} else if (uTintMode > 1.5 && uTintMode < 2.5) {
   col = mix(col, stageCol, 0.82);
-} else {
+} else if (uTintMode > 2.5) {
   col = mix(col, landCol, 0.72);
   col = mix(col, stageCol, 0.28);
 }
+// normal (≤ 0.5): keep material / wear color — no land or stage wash
 
 diffuseColor.rgb = col;
 `
 
 function tintModeValue(mode: LandUseViewMode): number {
-  if (mode === 'landUse') return 0
-  if (mode === 'stage') return 1
-  return 2
+  if (mode === 'normal') return 0
+  if (mode === 'landUse') return 1
+  if (mode === 'stage') return 2
+  return 3
 }
 
 export function createWearUniforms(mat: MaterialityParams): WearUniformBag {
@@ -306,7 +309,7 @@ function layerVec4b(mat: MaterialityParams) {
 export function syncWearUniforms(
   u: WearUniformBag,
   mat: MaterialityParams,
-  tintMode: LandUseViewMode = 'landUse',
+  tintMode: LandUseViewMode = 'normal',
 ) {
   Object.assign(u.uWearLayers.value, layerVec4(mat))
   Object.assign(u.uWearLayers2.value, layerVec4b(mat))

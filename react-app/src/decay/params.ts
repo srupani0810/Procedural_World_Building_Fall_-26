@@ -14,6 +14,10 @@ export function createDefaultDecayTerrain(): TerrainParams {
 
 export const DECAY_SKY = '#000000'
 export const DECAY_FOG = '#0a0a0a'
+/** Jump In look — lighter Before sky / soft haze (orbit keeps the black field). */
+export const JUMP_SKY = '#d8e2ec'
+export const JUMP_SKY_ZENITH = '#aebccc'
+export const JUMP_FOG = '#c4ced8'
 
 /** Axis-aligned noise plane in DECAY: size × size, centered at origin. Not endless. */
 export const DECAY_FIELD_SIZE = 520
@@ -224,6 +228,15 @@ export type RoadCensus = {
   landPark: number
   landFarm: number
   landYard: number
+  /** Housing form shells (plot-level, not row units). */
+  housingRow: number
+  housingWalkup: number
+  housingTenement: number
+  /** Industry / yard forms. */
+  industryFactory: number
+  industryWarehouse: number
+  industryHeavy: number
+  industryRail: number
 }
 
 export const emptyRoadCensus: RoadCensus = {
@@ -246,6 +259,13 @@ export const emptyRoadCensus: RoadCensus = {
   landPark: 0,
   landFarm: 0,
   landYard: 0,
+  housingRow: 0,
+  housingWalkup: 0,
+  housingTenement: 0,
+  industryFactory: 0,
+  industryWarehouse: 0,
+  industryHeavy: 0,
+  industryRail: 0,
 }
 
 export type DecaySelection = {

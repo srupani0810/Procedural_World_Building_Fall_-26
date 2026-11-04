@@ -16,7 +16,14 @@ import { DecayShell } from './decay/DecayShell.tsx'
 import type { BuildingHoverInfo } from './decay/buildings.ts'
 import type { PlayerClaim } from './decay/claims.ts'
 import type { LandUseViewMode } from './decay/landUse.ts'
-import { createDefaultFieldMaps, resetField, type FieldMaps } from './decay/fields.ts'
+import {
+  applyHeightNoisePatch,
+  createDefaultFieldMaps,
+  heightNoiseRuleLine,
+  resetField,
+  type FieldMaps,
+} from './decay/fields.ts'
+import { formHeightRuleLines } from './decay/formHeight.ts'
 import {
   createDefaultMateriality,
   type MaterialityParams,
@@ -159,7 +166,7 @@ function App() {
     { t: number; counts: StageCounts }[]
   >([])
   const [decayClaims, setDecayClaims] = useState<PlayerClaim[]>([])
-  const [decayTintMode, setDecayTintMode] = useState<LandUseViewMode>('landUse')
+  const [decayTintMode, setDecayTintMode] = useState<LandUseViewMode>('normal')
   const decayTimelineTRef = useRef(0)
   decayTimelineTRef.current = decayTimelineT
   const appendDecayLog = useCallback((lines: string[]) => {
@@ -199,6 +206,7 @@ function App() {
   const [decayGraphReset, setDecayGraphReset] = useState(0)
   const [decayScreen, setDecayScreen] = useState<DecayScreen>('entry')
   const [decayViewTab, setDecayViewTab] = useState<DecayViewTab>('3d')
+  const [decayJumpFail, setDecayJumpFail] = useState<string | null>(null)
   const [decaySelection, setDecaySelection] = useState<DecaySelection>({
     draggingId: null,
     selectedId: null,
@@ -372,6 +380,18 @@ function App() {
             tintMode={decayTintMode}
             onRoadLog={setDecayRoadLog}
             onCensus={setDecayCensus}
+            onFormCensus={(fc) =>
+              setDecayCensus((c) => ({
+                ...c,
+                housingRow: fc.housing.row,
+                housingWalkup: fc.housing.walkup,
+                housingTenement: fc.housing.tenement,
+                industryFactory: fc.industry.factory,
+                industryWarehouse: fc.industry.warehouse,
+                industryHeavy: fc.industry.heavy,
+                industryRail: fc.industry.rail,
+              }))
+            }
             onSelection={setDecaySelection}
             onFieldsPainted={() => setDecayFieldRevision((n) => n + 1)}
             onBuildingHover={onDecayBuildingHover}
@@ -381,6 +401,17 @@ function App() {
             claims={decayClaims}
             claimEnabled={decayScreen === 'phase2'}
             onClaim={onDecayClaim}
+            jumpIn={decayViewTab === 'jump'}
+            onExitJumpIn={() => {
+              setDecayJumpFail(null)
+              setDecayViewTab('3d')
+            }}
+            onJumpFail={(reason) => {
+              console.error('[jump] Jump In failed:', reason)
+              setDecayJumpFail(reason)
+              setDecayViewTab('3d')
+            }}
+            onAppendJumpLog={(line) => appendDecayLog([line])}
           />
         ) : showSim ? (
           <HeightMapView
@@ -401,7 +432,12 @@ function App() {
           screen={decayScreen}
           onScreen={setDecayScreen}
           viewTab={decayViewTab}
-          onViewTab={setDecayViewTab}
+          onViewTab={(t) => {
+            if (t === 'jump') setDecayJumpFail(null)
+            setDecayViewTab(t)
+          }}
+          jumpFailMessage={decayJumpFail}
+          onDismissJumpFail={() => setDecayJumpFail(null)}
           roads={decayRoads}
           view={decayView}
           buildings={decayBuildings}
@@ -428,6 +464,24 @@ function App() {
           onAbsenceClock={(patch) => setDecayAbsenceClock((c) => ({ ...c, ...patch }))}
           onResetField={(kind) => {
             setDecayFields((maps) => resetField(maps, kind, decayTerrain))
+            setDecayFieldRevision((n) => n + 1)
+            if (kind === 'height') {
+              appendDecayLog([
+                heightNoiseRuleLine(createDefaultFieldMaps().heightSpec),
+                formHeightRuleLines(),
+              ])
+            }
+          }}
+          fields={decayFields}
+          onHeightNoise={(patch) => {
+            setDecayFields((maps) => {
+              const next = applyHeightNoisePatch(maps, patch)
+              queue.appendDecayLog([
+                heightNoiseRuleLine(next.heightSpec),
+                formHeightRuleLines(),
+              ])
+              return next
+            })
             setDecayFieldRevision((n) => n + 1)
           }}
           onResetGraph={() => {

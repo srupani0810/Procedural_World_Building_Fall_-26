@@ -7,7 +7,14 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Slider } from '../Slider.tsx'
 import './DecayChrome.css'
 import type { BuildingHoverInfo } from './buildings.ts'
-import type { FieldKind } from './fields.ts'
+import {
+  HEIGHT_NOISE_OPTIONS,
+  type FieldKind,
+  type FieldMaps,
+  type HeightHeatView,
+  type HeightNoiseId,
+  type HeightNoiseSpec,
+} from './fields.ts'
 import { MaterialityPreview } from './MaterialityPreview.tsx'
 import {
   MATERIAL_LABELS,
@@ -251,6 +258,8 @@ export function DecayShell({
   onScreen,
   viewTab,
   onViewTab,
+  jumpFailMessage = null,
+  onDismissJumpFail,
   roads,
   view,
   buildings,
@@ -278,11 +287,15 @@ export function DecayShell({
   onResetField,
   onResetGraph,
   onLeaveApp,
+  fields,
+  onHeightNoise,
 }: {
   screen: DecayScreen
   onScreen: (s: DecayScreen) => void
   viewTab: DecayViewTab
   onViewTab: (t: DecayViewTab) => void
+  jumpFailMessage?: string | null
+  onDismissJumpFail?: () => void
   roads: RoadNetworkParams
   view: DecayViewParams
   buildings: BuildingParams
@@ -310,6 +323,8 @@ export function DecayShell({
   onResetField: (kind: FieldKind) => void
   onResetGraph: () => void
   onLeaveApp: () => void
+  fields: FieldMaps
+  onHeightNoise: (patch: Partial<HeightNoiseSpec>) => void
 }) {
   const [logFilter, setLogFilter] = useState<DecayLogFilter>('all')
   const filteredLog = useMemo(() => filterLog(roadLog, logFilter), [roadLog, logFilter])
@@ -361,10 +376,34 @@ export function DecayShell({
           <button type="button" role="tab" disabled title="Not available — no 2D field map yet">
             2D
           </button>
-          <button type="button" role="tab" disabled title="Not available — no first-person walk yet">
+          <button
+            type="button"
+            role="tab"
+            className={viewTab === 'jump' ? 'is-active' : undefined}
+            aria-selected={viewTab === 'jump'}
+            onClick={() => onViewTab('jump')}
+          >
             Jump In
           </button>
         </div>
+      ) : null}
+
+      {screen !== 'entry' && viewTab === 'jump' ? (
+        <p className="decay-jump-hint" role="status">
+          WASD to move · drag to look · Shift to run · Esc to exit · sidewalks and crossings ·
+          buildings are solid
+        </p>
+      ) : null}
+
+      {screen !== 'entry' && jumpFailMessage ? (
+        <p className="decay-jump-fail" role="alert">
+          Jump in failed: {jumpFailMessage}
+          {onDismissJumpFail ? (
+            <button type="button" className="decay-jump-fail-dismiss" onClick={onDismissJumpFail}>
+              Dismiss
+            </button>
+          ) : null}
+        </p>
       ) : null}
 
       {screen === 'entry' ? (
@@ -440,10 +479,11 @@ export function DecayShell({
                 Uneven vacating: rim / steep / small plots start earlier; core lasts longest.
                 Stage flips one building at a time by onset rank.
               </p>
-              <p className="decay-hint">Color by</p>
-              <div className="decay-tools decay-tools-3" role="group" aria-label="Tint mode">
+              <p className="decay-hint">View</p>
+              <div className="decay-tools decay-tools-4" role="group" aria-label="View mode">
                 {(
                   [
+                    ['normal', 'Normal'],
                     ['landUse', 'Land use'],
                     ['stage', 'Stage'],
                     ['both', 'Both'],
@@ -608,7 +648,12 @@ export function DecayShell({
               <div>plot p{buildingHover.info.plotId}</div>
               <div>stage {buildingHover.info.stage ?? '—'}</div>
               <div>age {(buildingHover.info.age ?? 0).toFixed(1)}s</div>
-              <div>Height {buildingHover.info.heightField.toFixed(2)}</div>
+              <div>
+                district {(buildingHover.info.districtField ?? 0).toFixed(2)}
+              </div>
+              <div>plot {(buildingHover.info.plotField ?? 0).toFixed(2)}</div>
+              <div>field {buildingHover.info.heightField.toFixed(2)}</div>
+              <div>{buildingHover.info.stories} stories</div>
               <div>Size {buildingHover.info.sizeField.toFixed(2)}</div>
             </div>
           ) : null}
@@ -700,7 +745,12 @@ export function DecayShell({
                   <div>plot p{buildingHover.info.plotId}</div>
                   <div>stage {buildingHover.info.stage ?? '—'}</div>
                   <div>age {(buildingHover.info.age ?? 0).toFixed(1)}s</div>
-                  <div>stories {buildingHover.info.stories}</div>
+                  <div>
+                    district {(buildingHover.info.districtField ?? 0).toFixed(2)}
+                  </div>
+                  <div>plot {(buildingHover.info.plotField ?? 0).toFixed(2)}</div>
+                  <div>field {buildingHover.info.heightField.toFixed(2)}</div>
+                  <div>{buildingHover.info.stories} stories</div>
                 </>
               )}
             </div>
@@ -974,24 +1024,152 @@ export function DecayShell({
               </div>
               {fieldTab === 'height' ? (
                 <>
-                  <p className="decay-hint">Stories from the Height map (rule-based noise + paint).</p>
+                  <p className="decay-hint">
+                    District + plot noise → combined field 0–1 (paint on top). Forms map into their
+                    own story ranges.
+                  </p>
+                  <label className="decay-field">
+                    <span className="decay-slider-row">
+                      <span>Noise type</span>
+                      <span>
+                        {HEIGHT_NOISE_OPTIONS.find((o) => o.id === fields.heightSpec.noiseId)
+                          ?.label ?? fields.heightSpec.noiseId}
+                      </span>
+                    </span>
+                    <select
+                      value={fields.heightSpec.noiseId}
+                      onChange={(e) =>
+                        onHeightNoise({ noiseId: e.target.value as HeightNoiseId })
+                      }
+                    >
+                      {HEIGHT_NOISE_OPTIONS.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="decay-field">
+                    <span className="decay-slider-row">
+                      <span>Seed</span>
+                      <span>{fields.heightSpec.seed}</span>
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={String(fields.heightSpec.seed)}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim()
+                        if (raw === '' || raw === '-') return
+                        const n = Number.parseInt(raw, 10)
+                        if (!Number.isFinite(n)) return
+                        onHeightNoise({ seed: n })
+                      }}
+                    />
+                  </label>
                   <Slider
-                    label="Min stories"
-                    value={buildings.minStories}
-                    min={1}
-                    max={6}
-                    step={1}
-                    display={String(buildings.minStories)}
-                    onChange={(minStories) => onBuildings({ minStories })}
+                    label="District scale"
+                    value={fields.heightSpec.districtScale}
+                    min={0.001}
+                    max={0.02}
+                    step={0.0005}
+                    display={fields.heightSpec.districtScale.toFixed(4)}
+                    onChange={(districtScale) => onHeightNoise({ districtScale })}
+                  />
+                  <p className="decay-hint">Large wavelength (~6–10 blocks). Lower = broader.</p>
+                  <Slider
+                    label="Plot scale"
+                    value={fields.heightSpec.plotScale}
+                    min={0.01}
+                    max={0.12}
+                    step={0.001}
+                    display={fields.heightSpec.plotScale.toFixed(3)}
+                    onChange={(plotScale) => onHeightNoise({ plotScale })}
+                  />
+                  <p className="decay-hint">Small wavelength (~1–2 plots). Higher = finer.</p>
+                  <Slider
+                    label="District vs Plot"
+                    value={fields.heightSpec.districtMix}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    display={`${Math.round(fields.heightSpec.districtMix * 100)}% district`}
+                    onChange={(districtMix) => onHeightNoise({ districtMix })}
+                  />
+                  <p className="decay-hint">Heat map view</p>
+                  <div className="decay-tools decay-tools-3" role="group" aria-label="Height heat view">
+                    {(
+                      [
+                        ['combined', 'Combined'],
+                        ['district', 'District'],
+                        ['plot', 'Plot'],
+                      ] as [HeightHeatView, string][]
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={
+                          fields.heightSpec.heatView === id ? 'is-active' : undefined
+                        }
+                        onClick={() => onHeightNoise({ heatView: id })}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <Slider
+                    label="Center rise"
+                    value={fields.heightSpec.centerRise}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    display={fields.heightSpec.centerRise.toFixed(2)}
+                    onChange={(centerRise) => onHeightNoise({ centerRise })}
                   />
                   <Slider
-                    label="Max stories"
-                    value={buildings.maxStories}
-                    min={2}
-                    max={16}
+                    label="Edge falloff"
+                    value={fields.heightSpec.edgeFalloff}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    display={fields.heightSpec.edgeFalloff.toFixed(2)}
+                    onChange={(edgeFalloff) => onHeightNoise({ edgeFalloff })}
+                  />
+                  <Slider
+                    label="Center size"
+                    value={fields.heightSpec.centerSize}
+                    min={0.1}
+                    max={0.9}
+                    step={0.01}
+                    display={fields.heightSpec.centerSize.toFixed(2)}
+                    onChange={(centerSize) => onHeightNoise({ centerSize })}
+                  />
+                  <Slider
+                    label="Octaves"
+                    value={fields.heightSpec.octaves}
+                    min={1}
+                    max={8}
                     step={1}
-                    display={String(buildings.maxStories)}
-                    onChange={(maxStories) => onBuildings({ maxStories })}
+                    display={String(Math.round(fields.heightSpec.octaves))}
+                    onChange={(octaves) => onHeightNoise({ octaves })}
+                  />
+                  <Slider
+                    label="Contrast"
+                    value={fields.heightSpec.contrast}
+                    min={0}
+                    max={2.5}
+                    step={0.05}
+                    display={fields.heightSpec.contrast.toFixed(2)}
+                    onChange={(contrast) => onHeightNoise({ contrast })}
+                  />
+                  <Slider
+                    label="Offset"
+                    value={fields.heightSpec.offset}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    display={fields.heightSpec.offset.toFixed(2)}
+                    onChange={(offset) => onHeightNoise({ offset })}
                   />
                   <Slider
                     label="Story height"
@@ -1368,10 +1546,11 @@ export function DecayShell({
               </button>
             </Fold>
             <Fold title="View" defaultOpen>
-              <p className="decay-hint">Color buildings by</p>
-              <div className="decay-tools decay-tools-3" role="group" aria-label="Tint mode">
+              <p className="decay-hint">View</p>
+              <div className="decay-tools decay-tools-4" role="group" aria-label="View mode">
                 {(
                   [
+                    ['normal', 'Normal'],
                     ['landUse', 'Land use'],
                     ['stage', 'Stage'],
                     ['both', 'Both'],
@@ -1388,7 +1567,8 @@ export function DecayShell({
                 ))}
               </div>
               <p className="decay-hint" style={{ marginTop: 6 }}>
-                Land use = type color. Stage = vacate tint. Both = type shape + light stage.
+                Normal = Before / material colors. Land use = type legend tint. Stage = vacate
+                tint. Both = type + light stage.
               </p>
               <label className="decay-check">
                 <span>Show roads</span>
@@ -1546,6 +1726,46 @@ export function DecayShell({
                   </div>
                 )
               })}
+              <p className="decay-hint" style={{ marginTop: 10 }}>
+                Housing forms · count · share of housing
+              </p>
+              {(
+                [
+                  ['Row', census.housingRow],
+                  ['Walk-up', census.housingWalkup],
+                  ['Tenement', census.housingTenement],
+                ] as const
+              ).map(([label, count]) => {
+                const n = Math.max(
+                  1,
+                  census.housingRow + census.housingWalkup + census.housingTenement,
+                )
+                const share = ((100 * count) / n).toFixed(1)
+                return (
+                  <div className="decay-row" key={label}>
+                    <span>{label}</span>
+                    <span>
+                      {count} · {share}%
+                    </span>
+                  </div>
+                )
+              })}
+              <p className="decay-hint" style={{ marginTop: 10 }}>
+                Industry forms · count
+              </p>
+              {(
+                [
+                  ['Factory', census.industryFactory],
+                  ['Warehouse', census.industryWarehouse],
+                  ['Heavy plant', census.industryHeavy],
+                  ['Rail yard', census.industryRail],
+                ] as const
+              ).map(([label, count]) => (
+                <div className="decay-row" key={label}>
+                  <span>{label}</span>
+                  <span>{count}</span>
+                </div>
+              ))}
               <p className="decay-hint" style={{ marginTop: 8 }}>
                 Angle {Math.round(roads.angleDeg)}° · fill {angleFill.toFixed(0)}%
               </p>
@@ -1564,8 +1784,8 @@ export function DecayShell({
                 {LAND_USE_ORDER.map((u) => LAND_USE_RULE_TEXT[u]).join(' · ')}
               </p>
               <p className="decay-hint">
-                Park / Farm = ground only. Industry wide+low · Commerce taller in core · Housing
-                small · Civic upright · Yard pad + tower.
+                Park / Farm = ground only. Housing 60/20/20 row/walk-up/tenement · Industry
+                factory/warehouse/heavy · Yard = rail · Commerce taller in core · Civic upright.
               </p>
             </Fold>
             <Fold title="Process log" defaultOpen>
@@ -1604,13 +1824,17 @@ export function DecayShell({
               <div>plot p{buildingHover.info.plotId}</div>
               <div>stage {buildingHover.info.stage ?? '—'}</div>
               <div>age {(buildingHover.info.age ?? 0).toFixed(1)}s</div>
-              <div>Height {buildingHover.info.heightField.toFixed(2)}</div>
+              <div>
+                district {(buildingHover.info.districtField ?? 0).toFixed(2)}
+              </div>
+              <div>plot {(buildingHover.info.plotField ?? 0).toFixed(2)}</div>
+              <div>field {buildingHover.info.heightField.toFixed(2)}</div>
+              <div>{buildingHover.info.stories} stories</div>
               <div>Size {buildingHover.info.sizeField.toFixed(2)}</div>
               <div>slope {buildingHover.info.slope.toFixed(3)}</div>
               <div>floor {buildingHover.info.floorY.toFixed(2)}</div>
               <div>foundation {buildingHover.info.foundationHeight.toFixed(2)}</div>
               <div>shrink {buildingHover.info.shrink.toFixed(2)}</div>
-              <div>{buildingHover.info.stories} stories</div>
             </div>
           ) : null}
 
