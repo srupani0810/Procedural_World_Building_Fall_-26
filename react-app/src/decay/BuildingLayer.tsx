@@ -25,6 +25,7 @@ import {
   lookupHover,
   type BuildingFormCensus,
   type BuildingHoverInfo,
+  type BuildingInstance,
 } from './buildings.ts'
 import {
   claimableHover,
@@ -62,6 +63,7 @@ import {
 import type { HeightFn } from './directionField.ts'
 import {
   exposedFailSide,
+  geoLayerAmount,
   wearForBuilding,
   type MaterialityParams,
 } from './materiality.ts'
@@ -90,9 +92,6 @@ const MAX_FOUNDATION_POOL = 12000
 const MAX_DEBRIS = 8000
 const MAX_TARP = 4000
 const HEAT_RES = 96
-/** Debris / tarp appear only at high wear and stop growing past this. */
-const GEO_WEAR_MIN = 2.15
-const GEO_WEAR_CAP = 2.55
 
 function kindOf(params: BuildingParams): FieldKind {
   return params.activeField
@@ -537,17 +536,18 @@ export function BuildingLayer({
         fi++
       }
 
-      // Geometry weathering — high wear only, one side, capped (no further growth).
-      const geoT = Math.min(1, Math.max(0, (wear - GEO_WEAR_MIN) / (GEO_WEAR_CAP - GEO_WEAR_MIN)))
-      if (geoT > 0 && materiality.debris && debris) {
-        const scraps = Math.min(3, 1 + Math.floor(geoT * 2))
+      // Geometry weathering — late (startWear ≥ 2), one side, capped (brief).
+      const debrisAmt = geoLayerAmount(materiality.debris, wear)
+      if (debrisAmt > 0 && debris) {
+        const scraps = Math.min(3, 1 + Math.floor(debrisAmt * 2))
         const face = failFaceLocal(fail)
         for (let s = 0; s < scraps && di < MAX_DEBRIS; s++) {
-          const along = ((seedFromPlot(b.plotId * 17 + s) - 0.5) * 0.7)
+          const along = (seedFromPlot(b.plotId * 17 + s) - 0.5) * 0.7
           const lx = face.x * 0.55 + (fail === 1 || fail === 3 ? 0 : along)
           const lz = face.z * 0.55 + (fail === 0 || fail === 2 ? 0 : along)
           const w = worldFromLocal(b, lx, -0.48, lz)
-          const size = 0.25 + geoT * 0.2 * (0.5 + seedFromPlot(b.plotId + s * 3))
+          const size =
+            0.25 + debrisAmt * 0.2 * (0.5 + seedFromPlot(b.plotId + s * 3))
           dummy.position.set(w.x, b.floorY + size * 0.35, w.z)
           dummy.rotation.set(0, b.yaw + face.yaw * 0.15, 0)
           dummy.scale.set(size, size * 0.45, size * 0.7)
@@ -557,10 +557,11 @@ export function BuildingLayer({
         }
       }
 
-      if (geoT > 0.35 && materiality.tarp && tarp && ti < MAX_TARP) {
+      const tarpAmt = geoLayerAmount(materiality.tarp, wear)
+      if (tarpAmt > 0.2 && tarp && ti < MAX_TARP) {
         const face = failFaceLocal(fail)
         const w = worldFromLocal(b, face.x * 0.52, 0.15, face.z * 0.52)
-        const tw = Math.min(b.width, b.depth) * (0.28 + geoT * 0.08)
+        const tw = Math.min(b.width, b.depth) * (0.28 + tarpAmt * 0.08)
         const th = 0.04
         const td = tw * 0.7
         dummy.position.set(w.x, w.y, w.z)
@@ -802,7 +803,7 @@ export function BuildingLayer({
         args={[undefined, undefined, Math.max(4, Math.min(MAX_DEBRIS, buildingCap * 3))]}
         frustumCulled={false}
         raycast={() => null}
-        visible={materiality.debris}
+        visible={materiality.debris.on}
       >
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color="#4a4038" roughness={0.95} metalness={0.02} />
@@ -813,7 +814,7 @@ export function BuildingLayer({
         args={[undefined, undefined, Math.max(4, Math.min(MAX_TARP, buildingCap))]}
         frustumCulled={false}
         raycast={() => null}
-        visible={materiality.tarp}
+        visible={materiality.tarp.on}
       >
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color="#3a4838" roughness={0.9} metalness={0.05} />

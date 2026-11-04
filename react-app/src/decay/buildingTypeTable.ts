@@ -195,7 +195,15 @@ export const BUILDING_TYPE_DEFAULTS: Record<BuildingFormId, BuildingTypeParams> 
     },
     colors: {
       wall: HOUSE_BEFORE.brick,
-      wallTones: [HOUSE_BEFORE.brick],
+      /** Before brick tones — red-brown / tan / cream; city + Lab pick by block position. */
+      wallTones: [
+        HOUSE_BEFORE.brick,
+        HOUSE_BEFORE.walkupBodies[0]!,
+        HOUSE_BEFORE.walkupBodies[1]!,
+        HOUSE_BEFORE.walkupBodies[3]!,
+        HOUSE_BEFORE.plaster,
+        HOUSE_BEFORE.walkupBodies[2]!,
+      ],
       trim: HOUSE_BEFORE.trim,
       roof: HOUSE_BEFORE.roof,
       doorTones: HOUSE_BEFORE.doors,
@@ -203,7 +211,7 @@ export const BUILDING_TYPE_DEFAULTS: Record<BuildingFormId, BuildingTypeParams> 
     },
     variation: {
       rule: 'blockPosition',
-      note: 'plotId × unitIndex along the block → roof, door side, door color, window layout',
+      note: 'unitIndex + dist-to-block-center → roof (if Mixed), door, windows, chimney, brick tone',
     },
   },
 

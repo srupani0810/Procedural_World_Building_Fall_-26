@@ -262,8 +262,8 @@ export function partLowFence(): BufferGeometry {
 }
 
 /** Back extension (1 story, rear of footprint). */
-export function partBackExtension(): BufferGeometry {
-  return partBox(0.7, 0.85, 0.35, HOUSE_BEFORE.brick, 0, 0.45, 0.55)
+export function partBackExtension(wallHex: string = HOUSE_BEFORE.brick): BufferGeometry {
+  return partBox(0.7, 0.85, 0.35, wallHex, 0, 0.45, 0.55)
 }
 
 /** Rooftop water tank (tenement). */

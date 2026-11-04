@@ -1,17 +1,27 @@
 /**
- * Building Lab variant strip — V1…V6 from block position (no Math.random).
- * Same builder as the main viewer; click loads that variant.
+ * Building Lab variant strip — V1…V6 from block position + dist-to-center.
+ * Shared camera for every thumb; whole house framed and centered.
  */
 
 import { Canvas, useThree } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo } from 'react'
-import { DoubleSide, MeshStandardMaterial, Vector3 } from 'three'
+import {
+  BackSide,
+  CanvasTexture,
+  DoubleSide,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Vector3,
+} from 'three'
 import type { BuildingTypeParams } from '../buildingTypeTable.ts'
 import { buildLabRowHouseGeometry } from '../rowHouseForm.ts'
 import {
   LAB_VARIANT_COUNT,
+  labBuildParams,
   labPlotMass,
+  labThumbCameraPose,
   labVariantAt,
+  previewFromLotPosition,
   type LabPreview,
 } from './labDraft.ts'
 
@@ -25,57 +35,103 @@ type Props = {
   onLotPosition: (lotPosition: number) => void
 }
 
+function makeThumbBackdrop(): CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = 32
+  c.height = 32
+  const ctx = c.getContext('2d')!
+  const g = ctx.createRadialGradient(16, 14, 1, 16, 16, 18)
+  g.addColorStop(0, '#23262c')
+  g.addColorStop(1, '#15171b')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, 32, 32)
+  const tex = new CanvasTexture(c)
+  tex.needsUpdate = true
+  return tex
+}
+
 function ThumbScene({
   draft,
   lotPosition,
   storyHeight,
   width,
   depth,
+  storyMax,
 }: {
   draft: BuildingTypeParams
   lotPosition: number
   storyHeight: number
   width: number
   depth: number
+  storyMax: number
 }) {
-  const variant = useMemo(
-    () => labVariantAt(draft, lotPosition),
+  const look = useMemo(() => labVariantAt(draft, lotPosition), [draft, lotPosition])
+  const preview = useMemo(
+    () => previewFromLotPosition(draft, lotPosition),
     [draft, lotPosition],
   )
+  const params = useMemo(() => labBuildParams(draft, preview), [draft, preview])
   const geo = useMemo(
-    () => buildLabRowHouseGeometry(variant, draft),
-    [variant, draft],
+    () => buildLabRowHouseGeometry(look, params),
+    [look, params],
   )
   useEffect(() => () => geo.dispose(), [geo])
+
   const mat = useMemo(
     () =>
       new MeshStandardMaterial({
         vertexColors: true,
-        roughness: 0.8,
-        metalness: 0.03,
+        roughness: 0.72,
+        metalness: 0.02,
         side: DoubleSide,
       }),
     [],
   )
   useEffect(() => () => mat.dispose(), [mat])
-  const h = storyHeight * variant.stories
-  const camY = h * 0.7
-  const camDist = Math.max(width, depth, h) * 1.55
+
+  const backdropTex = useMemo(() => makeThumbBackdrop(), [])
+  const backdropMat = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        map: backdropTex,
+        side: BackSide,
+        depthWrite: false,
+      }),
+    [backdropTex],
+  )
+  useEffect(
+    () => () => {
+      backdropMat.dispose()
+      backdropTex.dispose()
+    },
+    [backdropMat, backdropTex],
+  )
+
+  const pose = useMemo(
+    () => labThumbCameraPose(width, depth, storyHeight, storyMax),
+    [width, depth, storyHeight, storyMax],
+  )
   const { camera } = useThree()
   useLayoutEffect(() => {
-    camera.position.set(camDist * 0.75, camY, camDist * 0.95)
-    camera.lookAt(new Vector3(0, h * 0.4, 0))
+    const cam = camera as typeof camera & { fov: number }
+    if ('fov' in cam) cam.fov = pose.fov
+    camera.position.set(pose.position[0], pose.position[1], pose.position[2])
+    camera.lookAt(new Vector3(pose.lookAt[0], pose.lookAt[1], pose.lookAt[2]))
     camera.updateProjectionMatrix()
-  }, [camera, camDist, camY, h])
+  }, [camera, pose])
 
   return (
     <>
-      <color attach="background" args={['#e8e4dc']} />
-      <ambientLight intensity={0.75} color="#fff4e8" />
-      <directionalLight position={[4, 8, 5]} intensity={1.2} color="#ffe2b8" />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow={false}>
-        <planeGeometry args={[width * 2.4, depth * 2.4]} />
-        <meshStandardMaterial color="#d8d0c4" />
+      <color attach="background" args={['#15171b']} />
+      <ambientLight intensity={0.62} color="#ffe8d2" />
+      <directionalLight position={[5, 9, 4]} intensity={1.2} color="#ffe2b8" />
+      <directionalLight position={[1, 4, 8]} intensity={0.45} color="#d8e0ea" />
+      <mesh scale={[40, 40, 40]} material={backdropMat} frustumCulled={false}>
+        <sphereGeometry args={[1, 16, 12]} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+        <planeGeometry args={[width * 2.6, depth * 2.6]} />
+        <meshStandardMaterial color="#3a3733" />
       </mesh>
       <mesh
         geometry={geo}
@@ -97,6 +153,7 @@ export function LabVariantStrip({
   onLotPosition,
 }: Props) {
   const mass = labPlotMass(draft, plotFrontage, plotDepth, storyHeight)
+  const storyMax = Math.max(draft.size.storyMax, draft.size.storyMin, 2)
 
   return (
     <div className="decay-lab-variants-wrap">
@@ -111,7 +168,7 @@ export function LabVariantStrip({
                 : 'decay-lab-variant-slot'
             }
             onClick={() => onSelect(i)}
-            title={`V${i + 1} · lot position ${i}`}
+            title={`V${i + 1} · lot ${i} · block + dist-to-center`}
           >
             <span className="decay-lab-variant-label">V{i + 1}</span>
             <div className="decay-lab-variant-canvas">
@@ -119,7 +176,7 @@ export function LabVariantStrip({
                 dpr={1}
                 gl={{ antialias: true, alpha: false, powerPreference: 'low-power' }}
                 camera={{
-                  fov: 40,
+                  fov: 36,
                   near: 0.05,
                   far: 80,
                   position: [4, 3, 5],
@@ -131,6 +188,7 @@ export function LabVariantStrip({
                   storyHeight={storyHeight}
                   width={mass.width}
                   depth={mass.depth}
+                  storyMax={storyMax}
                 />
               </Canvas>
             </div>

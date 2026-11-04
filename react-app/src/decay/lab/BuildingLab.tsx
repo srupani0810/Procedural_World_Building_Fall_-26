@@ -1,9 +1,9 @@
 /**
- * DECAY Building Lab — Stage A (Row house).
- * Draft edits stay local until Apply writes buildingTypeTable.
+ * DECAY Building Lab — Architecture + Materiality pages (shared draft).
+ * Draft edits stay local until Apply writes buildingTypeTable + materiality.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   applyBuildingType,
   BUILDING_FORM_IDS,
@@ -12,15 +12,24 @@ import {
   cloneBuildingType,
   getBuildingType,
   resetAllBuildingTypes,
-  resetBuildingType,
   type BuildingFormId,
   type BuildingTypeParams,
 } from '../buildingTypeTable.ts'
-import type { DecayBuildingParams, RoadNetworkParams } from '../params.ts'
+import {
+  cloneMateriality,
+  createDefaultMateriality,
+  materialityFingerprint,
+  type MaterialityParams,
+} from '../materiality.ts'
+import type { BuildingParams, RoadNetworkParams } from '../params.ts'
 import { clearRowHouseGeoCache } from '../rowHouseForm.ts'
 import { BuildingLabSettings } from './BuildingLabSettings.tsx'
 import { BuildingLabViewer } from './BuildingLabViewer.tsx'
+import { LabErrorBoundary } from './LabErrorBoundary.tsx'
 import { LabVariantStrip } from './LabVariantStrip.tsx'
+import { LabWearStrip } from './LabWearStrip.tsx'
+import { MaterialityLabSettings } from './MaterialityLabSettings.tsx'
+import { MaterialityLabViewer } from './MaterialityLabViewer.tsx'
 import {
   defaultLabDraft,
   defaultLabPreview,
@@ -31,12 +40,18 @@ import {
   type LabPreview,
 } from './labDraft.ts'
 
+export type LabPage = 'architecture' | 'materiality'
+
 type Props = {
+  page: LabPage
   roads: RoadNetworkParams
-  buildings: DecayBuildingParams
+  buildings: BuildingParams
+  /** Live city materiality — Lab drafts a clone until Apply. */
+  materialityLive: MaterialityParams
   debugEnabled?: boolean
   onAppendLog?: (lines: string[]) => void
   onRowMeshRebuild?: () => void
+  onApplyMateriality?: (next: MaterialityParams) => void
 }
 
 type TypeListItem = {
@@ -73,11 +88,14 @@ function typeList(): TypeListItem[] {
 }
 
 export function BuildingLab({
+  page,
   roads,
   buildings,
+  materialityLive,
   debugEnabled = false,
   onAppendLog,
   onRowMeshRebuild,
+  onApplyMateriality,
 }: Props) {
   const items = useMemo(() => typeList(), [])
   const [selected, setSelected] = useState<BuildingFormId>('row')
@@ -87,14 +105,32 @@ export function BuildingLab({
   const [preview, setPreview] = useState<LabPreview>(() =>
     defaultLabPreview(draftFromLiveTable('row')),
   )
+  const [matDraft, setMatDraft] = useState<MaterialityParams>(() =>
+    cloneMateriality(materialityLive),
+  )
   const [turntable, setTurntable] = useState(false)
   const [viewReset, setViewReset] = useState(0)
   const [dirtyTick, setDirtyTick] = useState(0)
 
-  const dirty = useMemo(() => {
+  const typeDirty = useMemo(() => {
     void dirtyTick
     return draftHasChanges(draft, selected)
   }, [draft, selected, dirtyTick])
+
+  const matDirty = useMemo(() => {
+    void dirtyTick
+    return materialityFingerprint(matDraft) !== materialityFingerprint(materialityLive)
+  }, [matDraft, materialityLive, dirtyTick])
+
+  const dirty = typeDirty || matDirty
+
+  const liveMatFp = materialityFingerprint(materialityLive)
+  useEffect(() => {
+    if (matDirty) return
+    setMatDraft(cloneMateriality(materialityLive))
+    // Sync Lab draft when city materiality updates and local mat draft is clean.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveMatFp])
 
   const setLot = (lotPosition: number) => {
     const i = Math.max(0, Math.min(LAB_VARIANT_COUNT - 1, Math.floor(lotPosition)))
@@ -102,15 +138,10 @@ export function BuildingLab({
   }
 
   const resetType = () => {
-    resetBuildingType(selected)
     const next = defaultLabDraft(selected)
     setDraft(next)
     setPreview(defaultLabPreview(next))
-    if (selected === 'row') {
-      clearRowHouseGeoCache()
-      onRowMeshRebuild?.()
-    }
-    onAppendLog?.([`[lab] reset type ${selected} → defaults`])
+    setMatDraft(createDefaultMateriality())
     setDirtyTick((n) => n + 1)
   }
 
@@ -120,8 +151,11 @@ export function BuildingLab({
     const next = defaultLabDraft(selected)
     setDraft(next)
     setPreview(defaultLabPreview(next))
+    const mat = createDefaultMateriality()
+    setMatDraft(mat)
+    onApplyMateriality?.(mat)
     onRowMeshRebuild?.()
-    onAppendLog?.(['[lab] reset all building types → defaults'])
+    onAppendLog?.(['[lab] reset all building types + materiality → defaults'])
     setDirtyTick((n) => n + 1)
   }
 
@@ -129,6 +163,7 @@ export function BuildingLab({
     const next = draftFromLiveTable(selected)
     setDraft(next)
     setPreview(previewFromLotPosition(next, preview.lotPosition))
+    setMatDraft(cloneMateriality(materialityLive))
     setDirtyTick((n) => n + 1)
   }
 
@@ -138,14 +173,21 @@ export function BuildingLab({
     applyBuildingType('row', draft)
     clearRowHouseGeoCache()
     onRowMeshRebuild?.()
+    onApplyMateriality?.(cloneMateriality(matDraft))
     const after = getBuildingType('row')
     const summary = buildingTypeChangeSummary(before, after)
-    onAppendLog?.([`[lab] apply row · ${summary}`])
+    onAppendLog?.([`[lab] apply row + materiality · ${summary}`])
     setDirtyTick((n) => n + 1)
   }
 
   return (
-    <div className="decay-lab" role="main" aria-label="Building Lab">
+    <div
+      className="decay-lab"
+      role="main"
+      aria-label={
+        page === 'architecture' ? 'Building Lab Architecture' : 'Building Lab Materiality'
+      }
+    >
       <nav className="decay-lab-types" aria-label="Building types">
         {FAMILY_ORDER.map((family) => {
           const group = items.filter((t) => t.family === family)
@@ -186,42 +228,124 @@ export function BuildingLab({
       </nav>
 
       <div className="decay-lab-center">
-        <BuildingLabViewer
-          draft={draft}
-          preview={preview}
-          plotFrontage={roads.plotFrontage}
-          plotDepth={roads.plotDepth}
-          storyHeight={buildings.storyHeight}
-          sidewalkWidth={roads.sidewalkWidth}
-          roadWidth={roads.localWidth}
-          debugEnabled={debugEnabled}
-          turntable={turntable}
-          viewReset={viewReset}
-          onTurntable={setTurntable}
-          onResetView={() => setViewReset((n) => n + 1)}
-        />
-        <LabVariantStrip
-          draft={draft}
-          preview={preview}
-          plotFrontage={roads.plotFrontage}
-          plotDepth={roads.plotDepth}
-          storyHeight={buildings.storyHeight}
-          onSelect={setLot}
-          onLotPosition={setLot}
-        />
+        {/* Keep both pages mounted (hidden) so switching does not remount the
+            canvas / reset the camera, and never rebuilds the city. */}
+        <div
+          className="decay-lab-page-pane"
+          hidden={page !== 'architecture'}
+          aria-hidden={page !== 'architecture'}
+        >
+          <LabErrorBoundary pageLabel="Architecture" onLog={onAppendLog}>
+            <BuildingLabViewer
+              draft={draft}
+              preview={preview}
+              plotFrontage={roads.plotFrontage}
+              plotDepth={roads.plotDepth}
+              storyHeight={buildings.storyHeight}
+              sidewalkWidth={roads.sidewalkWidth}
+              roadWidth={roads.localWidth}
+              debugEnabled={debugEnabled}
+              turntable={turntable}
+              viewReset={viewReset}
+              onTurntable={setTurntable}
+              onResetView={() => setViewReset((n) => n + 1)}
+            />
+            <LabVariantStrip
+              draft={draft}
+              preview={preview}
+              plotFrontage={roads.plotFrontage}
+              plotDepth={roads.plotDepth}
+              storyHeight={buildings.storyHeight}
+              onSelect={setLot}
+              onLotPosition={setLot}
+            />
+          </LabErrorBoundary>
+        </div>
+        <div
+          className="decay-lab-page-pane"
+          hidden={page !== 'materiality'}
+          aria-hidden={page !== 'materiality'}
+        >
+          <LabErrorBoundary pageLabel="Materiality" onLog={onAppendLog}>
+            <MaterialityLabViewer
+              draft={draft}
+              preview={preview}
+              materiality={matDraft}
+              plotFrontage={roads.plotFrontage}
+              plotDepth={roads.plotDepth}
+              storyHeight={buildings.storyHeight}
+              sidewalkWidth={roads.sidewalkWidth}
+              roadWidth={roads.localWidth}
+              turntable={turntable}
+              viewReset={viewReset}
+              onTurntable={setTurntable}
+              onResetView={() => setViewReset((n) => n + 1)}
+              onMateriality={(next) => {
+                setMatDraft(next)
+                setDirtyTick((n) => n + 1)
+              }}
+            />
+            <LabWearStrip
+              draft={draft}
+              preview={preview}
+              materiality={matDraft}
+              plotFrontage={roads.plotFrontage}
+              plotDepth={roads.plotDepth}
+              storyHeight={buildings.storyHeight}
+            />
+          </LabErrorBoundary>
+        </div>
       </div>
 
-      <BuildingLabSettings
-        draft={draft}
-        preview={preview}
-        dirty={dirty}
-        onDraft={setDraft}
-        onPreview={setPreview}
-        onResetType={resetType}
-        onResetAll={resetAll}
-        onApply={applyToCity}
-        onRevert={revertDraft}
-      />
+      <div
+        className="decay-lab-page-pane"
+        hidden={page !== 'architecture'}
+        aria-hidden={page !== 'architecture'}
+      >
+        <LabErrorBoundary pageLabel="Architecture settings" onLog={onAppendLog}>
+          <BuildingLabSettings
+            draft={draft}
+            preview={preview}
+            dirty={dirty}
+            onDraft={(next) => {
+              setDraft(next)
+              setPreview(previewFromLotPosition(next, preview.lotPosition))
+            }}
+            onPreview={setPreview}
+            onResetType={resetType}
+            onResetAll={resetAll}
+            onApply={applyToCity}
+            onRevert={revertDraft}
+          />
+        </LabErrorBoundary>
+      </div>
+      <div
+        className="decay-lab-page-pane"
+        hidden={page !== 'materiality'}
+        aria-hidden={page !== 'materiality'}
+      >
+        <LabErrorBoundary pageLabel="Materiality settings" onLog={onAppendLog}>
+          <MaterialityLabSettings
+            draft={draft}
+            preview={preview}
+            materiality={matDraft}
+            dirty={dirty}
+            onDraft={(next) => {
+              setDraft(next)
+              setPreview(previewFromLotPosition(next, preview.lotPosition))
+            }}
+            onPreview={setPreview}
+            onMateriality={(next) => {
+              setMatDraft(next)
+              setDirtyTick((n) => n + 1)
+            }}
+            onResetType={resetType}
+            onResetAll={resetAll}
+            onApply={applyToCity}
+            onRevert={revertDraft}
+          />
+        </LabErrorBoundary>
+      </div>
     </div>
   )
 }

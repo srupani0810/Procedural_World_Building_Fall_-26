@@ -3,7 +3,14 @@
  * Does not generate roads, plots, or settlement stages.
  */
 
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import { Slider } from '../Slider.tsx'
 import './DecayChrome.css'
 import type { BuildingHoverInfo } from './buildings.ts'
@@ -15,19 +22,7 @@ import {
   type HeightNoiseId,
   type HeightNoiseSpec,
 } from './fields.ts'
-import { MaterialityPreview } from './MaterialityPreview.tsx'
-import {
-  MATERIAL_LABELS,
-  MATERIAL_TONES,
-  MIXED_RULE_COPY,
-  resetMaterialSettings,
-  type MaterialityParams,
-  type MaterialPick,
-  type MixedAssignRule,
-  type ShellMaterial,
-  type SurfaceLayer,
-  type WearMode,
-} from './materiality.ts'
+import type { LabPage } from './lab/BuildingLab.tsx'
 import {
   INTRO_DURATION,
   type AbsenceClockParams,
@@ -51,7 +46,7 @@ import type {
   RoadEditTool,
   RoadNetworkParams,
 } from './params.ts'
-import { DECAY_MORPH, DECAY_STAGE } from './params.ts'
+import { DECAY_STAGE } from './params.ts'
 
 type FoldProps = {
   title: string
@@ -258,6 +253,8 @@ export function DecayShell({
   onScreen,
   viewTab,
   onViewTab,
+  labPage = 'architecture',
+  onLabPage,
   jumpFailMessage = null,
   onDismissJumpFail,
   jumpDebugLine = null,
@@ -266,7 +263,6 @@ export function DecayShell({
   debugEnabled = false,
   onDebugEnabled,
   buildings,
-  materiality,
   census,
   roadLog,
   selection,
@@ -281,8 +277,6 @@ export function DecayShell({
   onRoads,
   onView,
   onBuildings,
-  onMateriality,
-  onMaterialityReplace,
   onAppendLog,
   onTimelineT,
   onTimelinePlaying,
@@ -297,6 +291,8 @@ export function DecayShell({
   onScreen: (s: DecayScreen) => void
   viewTab: DecayViewTab
   onViewTab: (t: DecayViewTab) => void
+  labPage?: LabPage
+  onLabPage?: (page: LabPage) => void
   jumpFailMessage?: string | null
   onDismissJumpFail?: () => void
   jumpDebugLine?: string | null
@@ -306,7 +302,6 @@ export function DecayShell({
   debugEnabled?: boolean
   onDebugEnabled?: (on: boolean) => void
   buildings: BuildingParams
-  materiality: MaterialityParams
   census: RoadCensus
   roadLog: string[]
   selection: DecaySelection
@@ -321,8 +316,6 @@ export function DecayShell({
   onRoads: (patch: Partial<RoadNetworkParams>) => void
   onView: (patch: Partial<DecayViewParams>) => void
   onBuildings: (patch: Partial<BuildingParams>) => void
-  onMateriality: (patch: Partial<MaterialityParams>) => void
-  onMaterialityReplace: (next: MaterialityParams) => void
   onAppendLog: (lines: string[]) => void
   onTimelineT: (t: number) => void
   onTimelinePlaying: (playing: boolean) => void
@@ -336,20 +329,28 @@ export function DecayShell({
   const [logFilter, setLogFilter] = useState<DecayLogFilter>('all')
   const filteredLog = useMemo(() => filterLog(roadLog, logFilter), [roadLog, logFilter])
   const fieldTab = buildings.activeField
-  const editMat: ShellMaterial =
-    materiality.material === 'mixed' ? 'brick' : materiality.material
+  const [labMenuOpen, setLabMenuOpen] = useState(false)
+  const labMenuRef = useRef<HTMLDivElement>(null)
 
-  const setLayer = (key: keyof Pick<
-    MaterialityParams,
-    'grime' | 'rainStreaks' | 'rust' | 'chalk' | 'salt' | 'moss'
-  >, patch: Partial<SurfaceLayer>, label: string) => {
-    const prev = materiality[key]
-    const next = { ...prev, ...patch }
-    onMateriality({ [key]: next })
-    if (patch.on != null) {
-      onAppendLog([`[material] ${label} ${patch.on ? 'on' : 'off'} · rule layer toggle`])
+  useEffect(() => {
+    if (!labMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      const el = labMenuRef.current
+      if (el && !el.contains(e.target as Node)) setLabMenuOpen(false)
     }
-  }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLabMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [labMenuOpen])
+
+  const labTabLabel =
+    labPage === 'materiality' ? 'LAB · MATERIALITY' : 'LAB · ARCHITECTURE'
 
   const angleFill = ((roads.angleDeg - 0) / 90) * 100
 
@@ -392,15 +393,62 @@ export function DecayShell({
           >
             Jump In
           </button>
-          <button
-            type="button"
-            role="tab"
-            className={viewTab === 'lab' ? 'is-active' : undefined}
-            aria-selected={viewTab === 'lab'}
-            onClick={() => onViewTab('lab')}
-          >
-            Lab
-          </button>
+          <div className="decay-lab-tab-wrap" ref={labMenuRef}>
+            <button
+              type="button"
+              role="tab"
+              className={viewTab === 'lab' ? 'is-active' : undefined}
+              aria-selected={viewTab === 'lab'}
+              aria-haspopup="menu"
+              aria-expanded={labMenuOpen}
+              onClick={() => {
+                if (viewTab === 'lab') {
+                  setLabMenuOpen((o) => !o)
+                } else {
+                  onViewTab('lab')
+                  setLabMenuOpen(true)
+                }
+              }}
+            >
+              {viewTab === 'lab' ? labTabLabel : 'LAB'}
+            </button>
+            {labMenuOpen ? (
+              <div className="decay-lab-menu" role="menu" aria-label="Lab pages">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={
+                    viewTab === 'lab' && labPage === 'architecture'
+                      ? 'is-active'
+                      : undefined
+                  }
+                  onClick={() => {
+                    onLabPage?.('architecture')
+                    onViewTab('lab')
+                    setLabMenuOpen(false)
+                  }}
+                >
+                  Architecture
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={
+                    viewTab === 'lab' && labPage === 'materiality'
+                      ? 'is-active'
+                      : undefined
+                  }
+                  onClick={() => {
+                    onLabPage?.('materiality')
+                    onViewTab('lab')
+                    setLabMenuOpen(false)
+                  }}
+                >
+                  Materiality
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -1336,235 +1384,6 @@ export function DecayShell({
                 onClick={() => onResetField(fieldTab)}
               >
                 Reset Field
-              </button>
-            </Fold>
-            <Fold title="Materiality" defaultOpen>
-              <p className="decay-hint">
-                Surface wear is shader + world position (no bitmaps / UVs). Mass stays square —
-                geometry bites only late and capped.
-              </p>
-              <p className="decay-hint">Material</p>
-              <div className="decay-tools decay-tools-mat" role="tablist" aria-label="Material">
-                {(
-                  [
-                    'brick',
-                    'concrete',
-                    'plaster',
-                    'metal',
-                    'mixed',
-                  ] as MaterialPick[]
-                ).map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className={materiality.material === id ? 'is-active' : undefined}
-                    onClick={() => {
-                      onMateriality({ material: id })
-                      onAppendLog([`[material] set ${MATERIAL_LABELS[id]} · rule picker`])
-                    }}
-                  >
-                    {id === 'metal' ? 'Metal' : MATERIAL_LABELS[id]}
-                  </button>
-                ))}
-              </div>
-              {materiality.material === 'mixed' ? (
-                <>
-                  <p className="decay-hint">Mixed assign rule</p>
-                  <div className="decay-tools decay-tools-2" role="tablist" aria-label="Mixed rule">
-                    {(
-                      [
-                        ['byHeight', 'By height'],
-                        ['byDistance', 'By distance'],
-                      ] as [MixedAssignRule, string][]
-                    ).map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        className={materiality.mixedRule === id ? 'is-active' : undefined}
-                        onClick={() => {
-                          onMateriality({ mixedRule: id })
-                          onAppendLog([`[material] mixed rule ${id} · rule assign`])
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="decay-hint">{MIXED_RULE_COPY[materiality.mixedRule]}</p>
-                </>
-              ) : (
-                <>
-                  <p className="decay-hint">Base tone ({MATERIAL_LABELS[editMat]})</p>
-                  <div className="decay-swatch-row" role="list">
-                    {MATERIAL_TONES[editMat].map((hex, i) => (
-                      <button
-                        key={hex}
-                        type="button"
-                        className={
-                          materiality.toneIndex[editMat] === i
-                            ? 'decay-tone is-active'
-                            : 'decay-tone'
-                        }
-                        style={{ background: hex }}
-                        aria-label={`Tone ${i + 1}`}
-                        onClick={() =>
-                          onMateriality({
-                            toneIndex: { ...materiality.toneIndex, [editMat]: i },
-                          })
-                        }
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-
-              <p className="decay-hint" style={{ marginTop: 8 }}>
-                Wear preview
-              </p>
-              <div className="decay-tools decay-tools-2" role="tablist" aria-label="Wear mode">
-                {(
-                  [
-                    ['scrub', 'Scrub'],
-                    ['distance', 'Distance'],
-                  ] as [WearMode, string][]
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className={materiality.wearMode === id ? 'is-active' : undefined}
-                    onClick={() => {
-                      onMateriality({ wearMode: id })
-                      onAppendLog([`[material] wear mode ${id} · rule preview`])
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <Slider
-                label="Wear"
-                value={materiality.wear}
-                min={0}
-                max={3}
-                step={0.05}
-                display={materiality.wear.toFixed(2)}
-                onChange={(wear) => onMateriality({ wear })}
-              />
-              {materiality.wearMode === 'distance' ? (
-                <>
-                  <p className="decay-hint">
-                    Distance mode: rim wears first (stand-in for uneven vacancy). Core stays
-                    newer.
-                  </p>
-                  <Slider
-                    label="Wear radius"
-                    value={materiality.wearRadius}
-                    min={60}
-                    max={320}
-                    step={5}
-                    display={materiality.wearRadius.toFixed(0)}
-                    onChange={(wearRadius) => onMateriality({ wearRadius })}
-                  />
-                </>
-              ) : (
-                <p className="decay-hint">Scrub applies the same wear to every shell (0 new → 3 reclaimed).</p>
-              )}
-
-              <p className="decay-hint" style={{ marginTop: 8 }}>
-                Surface weathering (shader)
-              </p>
-              {(
-                [
-                  ['grime', 'Grime (base / roof edge)', materiality.grime],
-                  ['rainStreaks', 'Rain streaks', materiality.rainStreaks],
-                  ['rust', 'Rust', materiality.rust],
-                  ['chalk', 'Paint loss / chalking', materiality.chalk],
-                  ['salt', 'Salt stains (brick)', materiality.salt],
-                  ['moss', 'Moss / weeds at base', materiality.moss],
-                ] as const
-              ).map(([key, label, layer]) => (
-                <div key={key} className="decay-layer-row">
-                  <label className="decay-check">
-                    <span>{label}</span>
-                    <input
-                      type="checkbox"
-                      checked={layer.on}
-                      onChange={(e) => setLayer(key, { on: e.target.checked }, label)}
-                    />
-                  </label>
-                  <Slider
-                    label="Strength"
-                    value={layer.strength}
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    display={layer.strength.toFixed(2)}
-                    onChange={(strength) => setLayer(key, { strength }, label)}
-                  />
-                </div>
-              ))}
-
-              <p className="decay-hint" style={{ marginTop: 8 }}>
-                Geometry weathering (late / capped)
-              </p>
-              <label className="decay-check">
-                <span>Missing wall panel (exposed side)</span>
-                <input
-                  type="checkbox"
-                  checked={materiality.missingPanel}
-                  onChange={(e) => {
-                    onMateriality({ missingPanel: e.target.checked })
-                    onAppendLog([
-                      `[material] missing panel ${e.target.checked ? 'on' : 'off'} · rule layer toggle`,
-                    ])
-                  }}
-                />
-              </label>
-              <label className="decay-check">
-                <span>Base debris (one side)</span>
-                <input
-                  type="checkbox"
-                  checked={materiality.debris}
-                  onChange={(e) => {
-                    onMateriality({ debris: e.target.checked })
-                    onAppendLog([
-                      `[material] debris ${e.target.checked ? 'on' : 'off'} · rule layer toggle`,
-                    ])
-                  }}
-                />
-              </label>
-              <label className="decay-check">
-                <span>Tarp patch (one side)</span>
-                <input
-                  type="checkbox"
-                  checked={materiality.tarp}
-                  onChange={(e) => {
-                    onMateriality({ tarp: e.target.checked })
-                    onAppendLog([
-                      `[material] tarp ${e.target.checked ? 'on' : 'off'} · rule layer toggle`,
-                    ])
-                  }}
-                />
-              </label>
-              <p className="decay-hint decay-na">
-                Broken windows — not available until windows exist.
-              </p>
-
-              <p className="decay-hint" style={{ marginTop: 8 }}>
-                Stage preview
-              </p>
-              <MaterialityPreview materiality={materiality} />
-
-              <button
-                type="button"
-                className="decay-btn"
-                onClick={() => {
-                  const next = resetMaterialSettings(materiality, editMat)
-                  onMaterialityReplace(next)
-                  onAppendLog([`[material] reset ${MATERIAL_LABELS[editMat]} settings · rule reset`])
-                }}
-              >
-                Reset {MATERIAL_LABELS[editMat]} settings
               </button>
             </Fold>
             <Fold title="View" defaultOpen>

@@ -1,8 +1,7 @@
 /**
- * DECAY row house — parts kit merged into one mesh per archetype.
- * Unit footprint space; instance scales to plot width / depth / story height.
- * Variation from block position only (no Math.random).
- * Optional `params` overrides the shared table (Lab draft); city omits it.
+ * DECAY row house — parts kit + shared block variation rule.
+ * Lab strip and city HousingDetailLayer both call rowVariantFromSeed.
+ * No Math.random.
  */
 
 import { BufferGeometry } from 'three'
@@ -11,6 +10,7 @@ import {
   type BuildingTypeParams,
   type WindowLayoutId,
 } from './buildingTypeTable.ts'
+import { HOUSE_BEFORE } from './housePalette.ts'
 import {
   mergeParts,
   partBackExtension,
@@ -32,6 +32,16 @@ import {
 export type RowRoof = 'gable' | 'flat'
 export type RowWindowLayout = WindowLayoutId
 
+/** Before palette brick / body tones (red-brown, tan, cream). */
+export const ROW_BRICK_TONES: readonly string[] = [
+  HOUSE_BEFORE.brick,
+  HOUSE_BEFORE.walkupBodies[0]!,
+  HOUSE_BEFORE.walkupBodies[1]!,
+  HOUSE_BEFORE.walkupBodies[3]!,
+  HOUSE_BEFORE.plaster,
+  HOUSE_BEFORE.walkupBodies[2]!,
+]
+
 export type RowVariant = {
   stories: 2 | 3 | 4
   roof: RowRoof
@@ -44,15 +54,22 @@ export type RowVariant = {
   chimneySide: -1 | 1
   /** Roofline step in stories relative to a 2-story base (0 or 1). */
   roofStep: 0 | 1
+  /** Wall / brick tone from Before palette. */
+  wallHex: string
 }
 
 function typeOr(params?: BuildingTypeParams): BuildingTypeParams {
   return params ?? getBuildingType('row')
 }
 
-/** Deterministic variant from plot / unit index along the block (table variation rule). */
+/**
+ * Shared row variation — Lab and city.
+ * Inputs: unit index along the block + distance to block center.
+ * Roof: gable / flatCornice lock; gableOrFlat (Mixed) picks by position.
+ * Stories follow the height-field band (baseStories), clamped to the table.
+ */
 export function rowVariantFromSeed(
-  plotId: number,
+  _plotId: number,
   unitIndex: number,
   unitCount: number,
   baseStories: number,
@@ -60,10 +77,15 @@ export function rowVariantFromSeed(
   params?: BuildingTypeParams,
 ): RowVariant {
   const t = typeOr(params)
-  const seed = plotId * 17 + unitIndex * 31
-  const end = unitIndex === 0 || unitIndex === unitCount - 1
+  const n = Math.max(1, unitCount)
+  const i = Math.max(0, Math.min(n - 1, unitIndex))
+  const along = n <= 1 ? 0 : i / (n - 1)
+  /** 0 at block mid, 1 at either end. */
+  const distToCenter = Math.abs(along - 0.5) * 2
+  const seed = i * 17 + Math.floor(distToCenter * 10) * 3
+  const end = i === 0 || i === n - 1
   const corner = isCornerPlot || end
-  // Height field already chose story band; clamp to table range.
+
   const stories = (
     baseStories >= t.size.storyMax
       ? t.size.storyMax
@@ -71,25 +93,34 @@ export function rowVariantFromSeed(
         ? 3
         : t.size.storyMin
   ) as 2 | 3 | 4
-  const roofStep: 0 | 1 = 0
-  const roof: RowRoof =
-    t.roof.kind === 'gable'
-      ? 'gable'
-      : t.roof.kind === 'flatCornice'
-        ? 'flat'
-        : pickIndex(seed + 5, 2) === 0
-          ? 'gable'
-          : 'flat'
+
+  let roof: RowRoof
+  if (t.roof.kind === 'gable') {
+    roof = 'gable'
+  } else if (t.roof.kind === 'flatCornice') {
+    roof = 'flat'
+  } else {
+    // Mixed (gableOrFlat): ends prefer gable, mid prefers flat; seed still flips.
+    const roofBias = distToCenter >= 0.6 ? 0 : 1
+    roof = pickIndex(seed + 5 + roofBias, 2) === 0 ? 'gable' : 'flat'
+  }
+
   const doorSide: -1 | 1 = pickIndex(seed + 7, 2) === 0 ? -1 : 1
-  const doorColorIndex = pickIndex(
-    seed + 11,
-    Math.max(1, t.colors.doorTones.length),
-  )
+  const doorN = Math.max(1, t.colors.doorTones.length)
+  const doorColorIndex = pickIndex(seed + 11, doorN)
+
   const layouts = t.windows.layouts.length > 0 ? t.windows.layouts : (['even'] as const)
   let windows = layouts[pickIndex(seed + 13, layouts.length)]! as RowWindowLayout
   if (windows === 'bay' && !t.windows.bayAllowed) windows = 'even'
-  const chimneySide: -1 | 1 =
-    unitIndex === 0 ? 1 : unitIndex === unitCount - 1 ? -1 : doorSide
+
+  const chimneySide: -1 | 1 = i === 0 ? 1 : i === n - 1 ? -1 : doorSide
+
+  const tones =
+    t.colors.wallTones.length > 1 ? t.colors.wallTones : ROW_BRICK_TONES
+  const wallHex =
+    tones[pickIndex(seed + 19 + Math.floor(distToCenter * 5), tones.length)] ??
+    ROW_BRICK_TONES[0]!
+
   return {
     stories,
     roof,
@@ -98,7 +129,8 @@ export function rowVariantFromSeed(
     windows,
     corner,
     chimneySide,
-    roofStep,
+    roofStep: 0,
+    wallHex,
   }
 }
 
@@ -113,30 +145,28 @@ export function rowArchetypeKey(v: RowVariant, params?: BuildingTypeParams): str
     v.windows,
     `ch${v.chimneySide < 0 ? 'L' : 'R'}`,
     v.corner ? 'corner' : 'mid',
-    // Lab draft fingerprint so cached geos don't stick across edits.
-    params
-      ? [
-          t.roof.kind,
-          t.roof.pitch,
-          t.roof.overhang,
-          t.roof.parapetHeight,
-          t.windows.columns,
-          t.windows.rows,
-          t.windows.sizeW,
-          t.windows.sizeH,
-          t.windows.frameDepth,
-          t.windows.sillDepth,
-          t.windows.lintel ? 1 : 0,
-          t.windows.bayAllowed ? 1 : 0,
-          t.entrance.stoopSteps,
-          t.entrance.chimneyCount,
-          t.entrance.porchRoof ? 1 : 0,
-          t.entrance.doorOffset,
-          t.colors.wall,
-          t.colors.trim,
-          t.colors.roof,
-        ].join(':')
-      : 'city',
+    v.wallHex,
+    // Form-param fingerprint so Lab draft / Apply rebuilds correctly.
+    [
+      t.roof.kind,
+      t.roof.pitch,
+      t.roof.overhang,
+      t.roof.parapetHeight,
+      t.windows.columns,
+      t.windows.rows,
+      t.windows.sizeW,
+      t.windows.sizeH,
+      t.windows.frameDepth,
+      t.windows.sillDepth,
+      t.windows.lintel ? 1 : 0,
+      t.windows.bayAllowed ? 1 : 0,
+      t.entrance.stoopSteps,
+      t.entrance.chimneyCount,
+      t.entrance.porchRoof ? 1 : 0,
+      t.entrance.doorOffset,
+      t.colors.trim,
+      t.colors.roof,
+    ].join(':'),
   ].join('|')
 }
 
@@ -162,7 +192,6 @@ function frontWindows(
     if (n === 3) return [-0.32, 0, 0.32]
     return [-0.34, -0.12, 0.12, 0.34]
   }
-  // City: rows default tracks stories. Lab can lower rows without shrinking mass.
   const rowBands =
     t.windows.rows > 0 ? Math.min(stories, Math.max(1, Math.floor(t.windows.rows))) : stories
   for (let s = 1; s <= rowBands; s++) {
@@ -177,7 +206,6 @@ function frontWindows(
       out.push(...partWindow(0.28, y, w, h, winOpts))
       continue
     }
-    // even grid: skip door column on ground
     if (s === 1) {
       out.push(...partWindow(-doorX * 0.85, y, w, h, winOpts))
     } else {
@@ -199,15 +227,16 @@ export function buildRowHouseGeometry(
   const stories = v.stories
   const doorX = v.doorSide * t.entrance.doorOffset
   const doorHex = t.colors.doorTones[v.doorColorIndex] ?? t.colors.doorTones[0]!
+  const wallHex = v.wallHex || t.colors.wall
 
-  parts.push(partWallMass(stories, t.colors.wall))
+  parts.push(partWallMass(stories, wallHex))
   if (v.roof === 'gable') {
     parts.push(
       ...partPitchedGable(
         stories,
         t.roof.overhang,
         t.colors.roof,
-        t.colors.wall,
+        wallHex,
         t.roof.pitch > 0 ? t.roof.pitch + 0.07 : 0.42,
       ),
     )
@@ -232,7 +261,7 @@ export function buildRowHouseGeometry(
   parts.push(...partDoorWithTransom(doorX, doorHex, t.colors.trim))
   if (t.entrance.porchRoof) parts.push(partPorchRoof(doorX, t.colors.roof))
   if (t.windows.implemented) parts.push(...frontWindows(v, stories, t))
-  parts.push(partBackExtension())
+  parts.push(partBackExtension(wallHex))
   parts.push(partLowFence())
 
   if (v.corner) {

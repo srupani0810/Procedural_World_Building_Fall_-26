@@ -5,7 +5,6 @@
 
 import { useState, type ReactNode } from 'react'
 import type { BuildingTypeParams, RoofKind } from '../buildingTypeTable.ts'
-import { HOUSE_BEFORE } from '../housePalette.ts'
 import type { LabPreview } from './labDraft.ts'
 
 type Props = {
@@ -44,13 +43,6 @@ function patchEntrance(
 ): BuildingTypeParams {
   return { ...draft, entrance: { ...draft.entrance, ...patch } }
 }
-function patchColors(
-  draft: BuildingTypeParams,
-  patch: Partial<BuildingTypeParams['colors']>,
-): BuildingTypeParams {
-  return { ...draft, colors: { ...draft.colors, ...patch } }
-}
-
 function Fold({
   title,
   defaultOpen = true,
@@ -141,41 +133,6 @@ function Toggle({
   )
 }
 
-function SwatchRow({
-  label,
-  options,
-  value,
-  onPick,
-}: {
-  label: string
-  options: readonly string[]
-  value: string
-  onPick: (hex: string) => void
-}) {
-  return (
-    <div className="decay-lab-swatch-row">
-      <span>{label}</span>
-      <div className="decay-lab-swatches">
-        {options.map((hex) => (
-          <button
-            key={hex}
-            type="button"
-            className={
-              hex.toLowerCase() === value.toLowerCase()
-                ? 'decay-lab-swatch is-active'
-                : 'decay-lab-swatch'
-            }
-            style={{ background: hex }}
-            title={hex}
-            aria-label={`${label} ${hex}`}
-            onClick={() => onPick(hex)}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export function BuildingLabSettings({
   draft,
   preview,
@@ -187,26 +144,18 @@ export function BuildingLabSettings({
   onApply,
   onRevert,
 }: Props) {
-  const roofKindUi: 'gable' | 'flatCornice' =
-    draft.roof.kind === 'flatCornice' ? 'flatCornice' : 'gable'
-
-  const wallOptions = [
-    HOUSE_BEFORE.brick,
-    HOUSE_BEFORE.plaster,
-    ...HOUSE_BEFORE.walkupBodies,
-  ]
-  const trimOptions = [HOUSE_BEFORE.trim, HOUSE_BEFORE.cornice, HOUSE_BEFORE.stone]
-  const roofOptions = [HOUSE_BEFORE.roof, '#3a342e', '#5a5048', '#2a2826']
-  const doorOptions =
-    draft.colors.doorTones.length > 0
-      ? draft.colors.doorTones
-      : [...HOUSE_BEFORE.doors]
+  const roofKindUi: 'gableOrFlat' | 'gable' | 'flatCornice' =
+    draft.roof.kind === 'flatCornice'
+      ? 'flatCornice'
+      : draft.roof.kind === 'gable'
+        ? 'gable'
+        : 'gableOrFlat'
 
   return (
-    <aside className="decay-lab-settings" aria-label="Type settings">
+    <aside className="decay-lab-settings" aria-label="Architecture settings">
       <header className="decay-lab-settings-head">
         <div className="decay-lab-settings-title">
-          <h2>{draft.label}</h2>
+          <h2>{draft.label} · Architecture</h2>
           {dirty ? (
             <span className="decay-lab-dirty" title="Draft differs from the city table">
               Draft has changes
@@ -307,6 +256,7 @@ export function BuildingLabSettings({
                 onDraft(patchRoof(draft, { kind }))
               }}
             >
+              <option value="gableOrFlat">Roof: Mixed</option>
               <option value="gable">Gable</option>
               <option value="flatCornice">Flat with cornice</option>
             </select>
@@ -455,46 +405,6 @@ export function BuildingLabSettings({
             label="Porch roof"
             checked={draft.entrance.porchRoof}
             onChange={(v) => onDraft(patchEntrance(draft, { porchRoof: v }))}
-          />
-        </Fold>
-
-        <Fold title="Colors">
-          <p className="decay-lab-hint">Before palette</p>
-          <SwatchRow
-            label="Wall"
-            options={wallOptions}
-            value={draft.colors.wall}
-            onPick={(hex) => onDraft(patchColors(draft, { wall: hex }))}
-          />
-          <SwatchRow
-            label="Trim"
-            options={trimOptions}
-            value={draft.colors.trim}
-            onPick={(hex) => onDraft(patchColors(draft, { trim: hex }))}
-          />
-          <SwatchRow
-            label="Roof"
-            options={roofOptions}
-            value={draft.colors.roof}
-            onPick={(hex) => onDraft(patchColors(draft, { roof: hex }))}
-          />
-          <SwatchRow
-            label="Door"
-            options={doorOptions}
-            value={
-              doorOptions[preview.doorColorIndex] ??
-              doorOptions[0] ??
-              HOUSE_BEFORE.doors[0]
-            }
-            onPick={(hex) => {
-              const idx = doorOptions.findIndex(
-                (h) => h.toLowerCase() === hex.toLowerCase(),
-              )
-              onPreview({
-                ...preview,
-                doorColorIndex: idx >= 0 ? idx : 0,
-              })
-            }}
           />
         </Fold>
       </div>

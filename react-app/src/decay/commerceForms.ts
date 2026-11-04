@@ -104,7 +104,7 @@ export function commerceArchetypeKey(v: CommerceVariant): string {
 export function commerceVariantFromInstance(
   plotId: number,
   kind: CommerceKind,
-  heightH: number,
+  _heightH: number,
   rim: number,
   heightField = 0.5,
 ): CommerceVariant {

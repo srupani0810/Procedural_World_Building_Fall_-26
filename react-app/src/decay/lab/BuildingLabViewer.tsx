@@ -1,15 +1,18 @@
 /**
- * Building Lab 3D viewer — plot, sidewalk, street, scale figure.
- * Brighter lighting; turntable + reset view. Same parts kit as the city.
+ * Building Lab 3D viewer — DECAY dark backdrop, warm sun, rim light.
+ * Turntable / Reset view sit in the viewer corner (not the shell header).
  */
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import {
+  BackSide,
+  CanvasTexture,
   Color,
   DoubleSide,
   Group,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
   Vector3,
@@ -18,7 +21,12 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { BuildingTypeParams } from '../buildingTypeTable.ts'
 import { DebugPerfProbe } from '../debug/DebugPerfProbe.tsx'
 import { buildLabRowHouseGeometry } from '../rowHouseForm.ts'
-import { labPlotMass, labRowVariant, type LabPreview } from './labDraft.ts'
+import {
+  labBuildParams,
+  labPlotMass,
+  labRowVariant,
+  type LabPreview,
+} from './labDraft.ts'
 
 type Props = {
   draft: BuildingTypeParams
@@ -33,6 +41,21 @@ type Props = {
   viewReset: number
   onTurntable: (on: boolean) => void
   onResetView: () => void
+}
+
+function makeBackdropTexture(): CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = 64
+  c.height = 64
+  const ctx = c.getContext('2d')!
+  const g = ctx.createRadialGradient(32, 28, 2, 32, 32, 34)
+  g.addColorStop(0, '#23262c')
+  g.addColorStop(1, '#15171b')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, 64, 64)
+  const tex = new CanvasTexture(c)
+  tex.needsUpdate = true
+  return tex
 }
 
 function ScalePerson({ x, z }: { x: number; z: number }) {
@@ -64,7 +87,11 @@ function LabHouseMesh({
   storyHeight: number
 }) {
   const variant = useMemo(() => labRowVariant(draft, preview), [draft, preview])
-  const geo = useMemo(() => buildLabRowHouseGeometry(variant, draft), [variant, draft])
+  const params = useMemo(() => labBuildParams(draft, preview), [draft, preview])
+  const geo = useMemo(
+    () => buildLabRowHouseGeometry(variant, params),
+    [variant, params],
+  )
 
   useEffect(() => () => geo.dispose(), [geo])
 
@@ -72,8 +99,8 @@ function LabHouseMesh({
     () =>
       new MeshStandardMaterial({
         vertexColors: true,
-        roughness: 0.78,
-        metalness: 0.03,
+        roughness: 0.72,
+        metalness: 0.02,
         side: DoubleSide,
       }),
     [],
@@ -180,40 +207,71 @@ function LabScene(props: Props) {
     (depth - rearYard - massDepth) * (1 - frontShift)
 
   const plotMat = useMemo(
-    () => new MeshStandardMaterial({ color: new Color('#d8d0c4'), roughness: 0.92 }),
+    () => new MeshStandardMaterial({ color: new Color('#3a3733'), roughness: 0.94 }),
     [],
   )
   const walkMat = useMemo(
-    () => new MeshStandardMaterial({ color: new Color('#c4beb4'), roughness: 0.88 }),
+    () => new MeshStandardMaterial({ color: new Color('#55514b'), roughness: 0.9 }),
     [],
   )
   const roadMat = useMemo(
-    () => new MeshStandardMaterial({ color: new Color('#9a9590'), roughness: 0.9 }),
+    () => new MeshStandardMaterial({ color: new Color('#2e2c2a'), roughness: 0.92 }),
     [],
+  )
+  const backdropTex = useMemo(() => makeBackdropTexture(), [])
+  const backdropMat = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        map: backdropTex,
+        side: BackSide,
+        depthWrite: false,
+      }),
+    [backdropTex],
   )
   useEffect(
     () => () => {
       plotMat.dispose()
       walkMat.dispose()
       roadMat.dispose()
+      backdropMat.dispose()
+      backdropTex.dispose()
     },
-    [plotMat, walkMat, roadMat],
+    [plotMat, walkMat, roadMat, backdropMat, backdropTex],
   )
 
   return (
     <>
-      <color attach="background" args={['#e8e4dc']} />
-      <ambientLight intensity={0.72} color="#fff4e8" />
-      <hemisphereLight args={['#f2f0ea', '#c8b8a0', 0.55]} />
+      <color attach="background" args={['#15171b']} />
+      <ambientLight intensity={0.62} color="#ffe8d2" />
+      <hemisphereLight args={['#8a909a', '#3a3733', 0.4]} />
+      {/* Warm key sun */}
       <directionalLight
         position={[7, 12, 5]}
-        intensity={1.35}
+        intensity={1.25}
         color="#ffe2b8"
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
+        shadow-bias={-0.0002}
+        shadow-normalBias={0.03}
       />
-      <directionalLight position={[-5, 4, -3]} intensity={0.35} color="#d0d8e8" />
+      {/* Soft fill */}
+      <directionalLight position={[-6, 5, -2]} intensity={0.28} color="#a8b0bc" />
+      {/* Faint rim from behind the house (+Z rear) so the outline lifts off the backdrop */}
+      <directionalLight
+        position={[1.5, 5, zCenter + 10]}
+        intensity={0.55}
+        color="#d8e0ea"
+      />
+
+      <mesh
+        position={[0, houseH * 0.5, zCenter]}
+        scale={[90, 90, 90]}
+        material={backdropMat}
+        frustumCulled={false}
+      >
+        <sphereGeometry args={[1, 24, 16]} />
+      </mesh>
 
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}

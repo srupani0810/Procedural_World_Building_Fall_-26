@@ -14,7 +14,7 @@ import { INTRO_DURATION } from './weatheringV3/timeline.ts'
 import DecayScene from './decay/DecayScene.tsx'
 import type { JumpDebugInfo } from './decay/DecayFirstPerson.tsx'
 import { DecayShell } from './decay/DecayShell.tsx'
-import { BuildingLab } from './decay/lab/BuildingLab.tsx'
+import { BuildingLab, type LabPage } from './decay/lab/BuildingLab.tsx'
 import { readDebugEnabled, writeDebugEnabled } from './decay/debug/debugPrefs.ts'
 import { DecayDebugPanel } from './decay/debug/DecayDebugPanel.tsx'
 import {
@@ -216,6 +216,22 @@ function App() {
   const [decayGraphReset, setDecayGraphReset] = useState(0)
   const [decayScreen, setDecayScreen] = useState<DecayScreen>('entry')
   const [decayViewTab, setDecayViewTab] = useState<DecayViewTab>('3d')
+  const [decayLabPage, setDecayLabPage] = useState<LabPage>(() => {
+    try {
+      const v = window.localStorage.getItem('decay-lab-page')
+      return v === 'materiality' ? 'materiality' : 'architecture'
+    } catch {
+      return 'architecture'
+    }
+  })
+  const setDecayLabPagePersist = useCallback((page: LabPage) => {
+    try {
+      window.localStorage.setItem('decay-lab-page', page)
+    } catch {
+      /* ignore */
+    }
+    setDecayLabPage(page)
+  }, [])
   /** Debug mode — off by default; persisted. When false, no debug systems mount. */
   const [decayDebug, setDecayDebug] = useState(() => readDebugEnabled())
   /** Lab Apply bumps this so city row meshes rebuild without remorphing. */
@@ -455,11 +471,14 @@ function App() {
         ) : mode === 'decay' ? (
           decayViewTab === 'lab' && decayScreen !== 'entry' ? (
             <BuildingLab
+              page={decayLabPage}
               roads={decayRoads}
               buildings={decayBuildings}
+              materialityLive={decayMateriality}
               debugEnabled={decayDebug}
               onAppendLog={appendDecayLog}
               onRowMeshRebuild={() => setDecayRowMeshRevision((n) => n + 1)}
+              onApplyMateriality={setDecayMateriality}
             />
           ) : (
             <DecayScene
@@ -538,6 +557,8 @@ function App() {
             if (t === 'jump') setDecayJumpFail(null)
             setDecayViewTab(t)
           }}
+          labPage={decayLabPage}
+          onLabPage={setDecayLabPagePersist}
           jumpFailMessage={decayJumpFail}
           onDismissJumpFail={() => setDecayJumpFail(null)}
           jumpDebugLine={
@@ -548,7 +569,6 @@ function App() {
           debugEnabled={decayDebug}
           onDebugEnabled={setDecayDebugPersist}
           buildings={decayBuildings}
-          materiality={decayMateriality}
           census={decayCensus}
           roadLog={decayRoadLog}
           selection={decaySelection}
@@ -563,8 +583,6 @@ function App() {
           onRoads={(patch) => setDecayRoads((c) => ({ ...c, ...patch }))}
           onView={(patch) => setDecayView((c) => ({ ...c, ...patch }))}
           onBuildings={(patch) => setDecayBuildings((c) => ({ ...c, ...patch }))}
-          onMateriality={(patch) => setDecayMateriality((c) => ({ ...c, ...patch }))}
-          onMaterialityReplace={setDecayMateriality}
           onAppendLog={appendDecayLog}
           onTimelineT={setDecayTimelineT}
           onTimelinePlaying={setDecayTimelinePlaying}
@@ -583,7 +601,7 @@ function App() {
           onHeightNoise={(patch) => {
             setDecayFields((maps) => {
               const next = applyHeightNoisePatch(maps, patch)
-              queue.appendDecayLog([
+              appendDecayLog([
                 heightNoiseRuleLine(next.heightSpec),
                 formHeightRuleLines(),
               ])

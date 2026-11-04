@@ -117,7 +117,6 @@ const RGB_WALK = hexRgb(DECAY_MORPH.sidewalk)
 const RGB_PLOT = hexRgb(DECAY_MORPH.plot)
 const RGB_CORNER = hexRgb(DECAY_MORPH.cornerPlot)
 const RGB_OPEN = hexRgb(DECAY_MORPH.openPlot)
-const RGB_BL = hexRgb(DECAY_MORPH.buildingLine)
 const RGB_LAND: Record<LandUse, Rgb> = {
   industry: hexRgb(LAND_USE_COLORS.industry),
   commerce: hexRgb(LAND_USE_COLORS.commerce),
